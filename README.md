@@ -1,9 +1,9 @@
-CIS 565 : Final Project -- Position Based Fluids
-=====================
+#CIS 565 : Final Project
+##Position Based Fluids
 
-[Harmony Li](https://github.com/harmoli) (harmoli@seas.upenn.edu)
+Harmony Li, harmoli@seas.upenn.edu
 
-[Joseph Tong](https://github.com/josephto) (josephto@seas.upenn.edu)
+Joseph Tong, josephto@seas.upenn.edu
 
 -----
 
@@ -15,7 +15,7 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 
 -----
 
-##Proposed Features:
+###Proposed Features:
 *   Particle-based position based dynamics fluid simulator that runs on the GPU
 *   Uses the density constraint to enforce incompressibility
 *   Artificial pressure term to simulate surface tension
@@ -26,7 +26,7 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 
 -------
 
-##Tentative Schedule
+###Tentative Schedule
 * Mon, 11/25 (Alpha) 
  + Setting up framework for constraint and particle system
  + Set up visualization for particles 
@@ -40,17 +40,17 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 
 ------
 
-##External Libraries:
+###External Libraries:
 [Jacobi Iterator](https://code.google.com/p/jacobi-in-parallel/source/browse/jacobi/trunk/jacobiCUDA/cudaJacobi.cu?spec=svn34&r=34)
 
 ------
 
-##References:
-###Fluid Simulation
+###References:
+####Fluid Simulation
 * [Position Based Fluids](http://mmacklin.com/pbf_sig_preprint.pdf) : M. Muller, M. Macklin 
 * [Position Based Fluids : SIGGRAPH proceeding slides] (http://mmacklin.com/pbf_slides.pdf)
 
-###Rendering
+####Rendering
 * [Screen Space Fluid Rendering with Curvature Flow] (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.157.909&rep=rep1&type=pdf) : W. van der Laan, S. Green, M. Sainz 
 * [Reconstructing Surfaces of Particle-Based Fluids using Anisiotropic Kernels] (http://www.cc.gatech.edu/~turk/my_papers/sph_surfaces.pdf) : Yu, Turk
 
