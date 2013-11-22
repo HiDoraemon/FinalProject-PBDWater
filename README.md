@@ -1,11 +1,11 @@
-CIS 565 : Final Project
+CIS 565 : Final Project -- Position Based Fluids
 =====================
 
-Harmony Li 
+[Harmony Li](https://github.com/harmoli) (harmoli@seas.upenn.edu)
 
-Joseph Tong
+[Joseph Tong](https://github.com/josephto) (josephto@seas.upenn.edu)
 
-##Position Based Fluids
+-----
 
 We want to implement a GPU based PBD fluid simulation stable enough to support 
 large time steps for real-time applications. Through the enforcement of constant 
@@ -27,7 +27,6 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 -------
 
 ##Tentative Schedule
-
 * Mon, 11/25 (Alpha) 
  + Setting up framework for constraint and particle system
  + Set up visualization for particles 
@@ -42,13 +41,11 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 ------
 
 ##External Libraries:
-
 [Jacobi Iterator](https://code.google.com/p/jacobi-in-parallel/source/browse/jacobi/trunk/jacobiCUDA/cudaJacobi.cu?spec=svn34&r=34)
 
 ------
 
 ##References:
-
 ###Fluid Simulation
 * [Position Based Fluids](http://mmacklin.com/pbf_sig_preprint.pdf) : M. Muller, M. Macklin 
 * [Position Based Fluids : SIGGRAPH proceeding slides] (http://mmacklin.com/pbf_slides.pdf)
