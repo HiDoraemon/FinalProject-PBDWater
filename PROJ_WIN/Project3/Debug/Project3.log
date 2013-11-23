@@ -1,0 +1,31 @@
+﻿Build started 11/23/2013 4:34:54 PM.
+     1>Project "C:\Users\Remote\Documents\CIS565\FinalProject-PBDWater\PROJ_WIN\Project3\Project3.vcxproj" on node 2 (build target(s)).
+     1>InitializeBuildStatus:
+         Touching "Debug\FinalProject.unsuccessfulbuild".
+       AddCudaCompileDeps:
+       Skipping target "AddCudaCompileDeps" because all output files are up-to-date with respect to the input files.
+       AddCudaCompilePropsDeps:
+       Skipping target "AddCudaCompilePropsDeps" because all output files are up-to-date with respect to the input files.
+       CudaBuild:
+       Skipping target "CudaBuild" because all output files are up-to-date with respect to the input files.
+       ClCompile:
+         c:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin\CL.exe /c /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v5.5\include" /I"C:/ProgramData/NVIDIA Corporation/CUDA Samples/v5.5/common/inc" /I../shared/glew/includes /I../shared/freeglut/includes /ZI /nologo /W3 /WX- /Od /Oy- /D WIN32 /D _DEBUG /D _CONSOLE /D _MBCS /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Fo"Debug\\" /Fd"Debug\vc100.pdb" /Gd /TP /analyze- /errorReport:prompt ..\..\src\scene.cpp
+         scene.cpp
+       Link:
+         c:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\Remote\Documents\CIS565\FinalProject-PBDWater\PROJ_WIN\Debug\FinalProject.exe" /INCREMENTAL:NO /NOLOGO /LIBPATH:../shared/glew/lib /LIBPATH:../shared/freeglut/lib /LIBPATH:"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v5.5\lib\Win32" cudart.lib glew32.lib glu32.lib opengl32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /ManifestFile:"Debug\FinalProject.exe.intermediate.manifest" /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /DEBUG /PDB:"C:\Users\Remote\Documents\CIS565\FinalProject-PBDWater\PROJ_WIN\Debug\FinalProject.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /ENTRY:"mainCRTStartup" /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Remote\Documents\CIS565\FinalProject-PBDWater\PROJ_WIN\Debug\FinalProject.lib" /MACHINE:X86 "C:\Users\Remote\Documents\CIS565\FinalProject-PBDWater\PROJ_WIN\Project3\Win32/Debug/kernel.cu.obj"
+         Debug\glslUtility.obj
+         Debug\main.obj
+         Debug\scene.obj
+         Debug\utilities.obj
+     1>glslUtility.obj : warning LNK4075: ignoring '/EDITANDCONTINUE' due to '/INCREMENTAL:NO' specification
+         Project3.vcxproj -> C:\Users\Remote\Documents\CIS565\FinalProject-PBDWater\PROJ_WIN\Debug\FinalProject.exe
+       Manifest:
+         C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin\mt.exe /nologo /verbose /outputresource:"C:\Users\Remote\Documents\CIS565\FinalProject-PBDWater\PROJ_WIN\Debug\FinalProject.exe;#1" /manifest Debug\FinalProject.exe.intermediate.manifest
+       FinalizeBuildStatus:
+         Deleting file "Debug\FinalProject.unsuccessfulbuild".
+         Touching "Debug\FinalProject.lastbuildstate".
+     1>Done Building Project "C:\Users\Remote\Documents\CIS565\FinalProject-PBDWater\PROJ_WIN\Project3\Project3.vcxproj" (build target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:02.73
