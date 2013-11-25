@@ -5,6 +5,12 @@
 #include "utilities.h"
 #include "kernel.h"
 
+#if PRESSURE == 1
+	#define DELTA_Q 0.1*H
+	#define K 0.001
+	#define N 4
+#endif
+
 #if SHARED == 1
     #define ACC(x,y,z) sharedMemAcc(x,y,z)
 #else
@@ -209,6 +215,97 @@ void sendToPBO(int N, glm::vec4 * pos, float4 * pbo, int width, int height, floa
         // Each thread writes one pixel location in the texture (textel)
         pbo[index].w = (mag < 1.0f) ? mag : 1.0f;
     }
+}
+
+/*************************************
+ * Device Functions and Kernels for Jacobi Solver
+ *************************************/
+__device__ float wPoly6Kernel(glm::vec3 p_i, glm::vec3 p_j){
+	float r = glm::length(p_i - p_j);
+	float hr_term = (H * H - r * r);
+	return 315.0f / (64.0 * PI * POW_H_9) * hr_term * hr_term * hr_term;
+}
+
+__device__ glm::vec3 wGradientSpikyKernel(glm::vec3 p_i, glm::vec3 p_j){
+	glm::vec3 r = p_i - p_j;
+	float hr_term = H - glm::length(r);
+	float gradient_magnitude = 45.0f / (PI * POW_H_6) * hr_term * hr_term;
+	return gradient_magnitude * glm::normalize(r);
+}
+
+__device__ float calculateRo(glm::vec3* particles, glm::vec3 p, int* p_neighbors, int p_num_neighbors){
+	glm::vec3 p_j;
+	float ro = 0.0f;
+	for(int i = 0; i < p_num_neighbors; i++){
+		p_j = particles[p_neighbors[i]];
+		ro += wPoly6Kernel(p, p_j);
+	}
+	return ro;
+}
+
+__device__ glm::vec3 calculateCiGradient(glm::vec3 p_i, glm::vec3 p_j){
+	return -1.0f * wGradientSpikyKernel(p_i, p_j);
+}
+
+__device__ glm::vec3 calculateCiGradientAti(glm::vec3* particles, glm::vec3 p_i, int* p_neighbors, int p_num_neighbors){
+	glm::vec3 accum = glm::vec3(0.0f);
+	for(int i = 0; i < p_num_neighbors; i++){
+		accum += wGradientSpikyKernel(p_i, particles[p_neighbors[i]]);
+	}
+	return accum;
+}
+
+__global__ void calculateLambda(glm::vec3* particles, int** neighbors, int* num_neighbors, float* lambdas, int num_particles){
+	int index = threadIdx.x;
+	if(index < num_particles){
+		int* k_neighbors = neighbors[index];
+		int k = num_neighbors[index];
+		glm::vec3 p = particles[index];
+
+		float p_i = calculateRo(particles, p, k_neighbors, k);
+		float C_i = (p_i / REST_DENSITY) - 1.0f;
+
+		
+		float C_i_gradient, sum_gradients = 0.0f;
+		for(int i = 0; i < k; i++){
+			// Calculate gradient when k = j
+			C_i_gradient = glm::length(calculateCiGradient(p, particles[k_neighbors[i]]));
+			sum_gradients += (C_i_gradient * C_i_gradient);
+		}
+
+		// Add gradient when k = i
+		C_i_gradient = glm::length(calculateCiGradientAti(particles, p, k_neighbors, k));
+		sum_gradients += (C_i_gradient * C_i_gradient);
+
+		lambdas[index] = -1.0f * (C_i / (sum_gradients + RELAXATION)); 
+	}
+}
+
+__global__ void calculateDeltaPi(glm::vec3* particles, int** neighbors, int* num_neighbors, float* lambdas, glm::vec3* delta_pos, int num_particles){
+	int index = threadIdx.x;
+	if(index < num_particles){
+		int* k_neighbors = neighbors[index];
+		int k = num_neighbors[index];
+		glm::vec3 p = particles[index];
+		float l = lambdas[index];
+		
+		glm::vec3 delta = glm::vec3(0.0f);
+		int p_j_idx;
+#if PRESSURE == 1
+		float k_term;
+		glm::vec3 d_q = DELTA_Q * glm::vec3(1.0f) + p;
+#endif
+		float s_corr = 0.0f;
+		for(int i = 0; i < k; i++){
+			p_j_idx = k_neighbors[i];
+#if PRESSURE == 1
+			float k_term = wPoly6Kernel(p, particles[p_j_idx]) / wPoly6Kernel(p, d_q);
+			s_corr = -1.0f * K * pow(k_term, N);
+#endif
+			delta += (l + lambdas[p_j_idx] + s_corr) * wGradientSpikyKernel(p, particles[p_j_idx]);
+		}
+		delta_pos[index] = 1.0f / REST_DENSITY * delta;
+	}
 }
 
 /*************************************
