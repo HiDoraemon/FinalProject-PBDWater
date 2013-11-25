@@ -218,8 +218,9 @@ void sendToPBO(int N, glm::vec4 * pos, float4 * pbo, int width, int height, floa
 }
 
 /*************************************
- * Device Functions and Kernels for Jacobi Solver
+ * Device Methods for Solver
  *************************************/
+
 __device__ float wPoly6Kernel(glm::vec3 p_i, glm::vec3 p_j){
 	float r = glm::length(p_i - p_j);
 	float hr_term = (H * H - r * r);
@@ -254,6 +255,33 @@ __device__ glm::vec3 calculateCiGradientAti(glm::vec3* particles, glm::vec3 p_i,
 	}
 	return accum;
 }
+
+/*************************************
+ * Finding Neighboring Particles 
+ *************************************/
+__global__ void findNeighbors(glm::vec3* particles, int** neighbors, int* num_neighbors, int num_particles){
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+	if(index < num_particles){
+		glm::vec3 p = particles[index];
+		int* p_neighbors = neighbors[index];
+		int num_p_neighbors = 0;
+		glm::vec3 p_j, r;
+		for(int i = 0; i < num_particles && num_p_neighbors < 10; i++){
+			if(i != index){
+				p_j = particles[i];
+				r = p_j - p;
+				if(glm::length(r) <= H){
+					p_neighbors[num_p_neighbors] = i;
+					++num_p_neighbors;
+				}
+			}
+		}
+	}
+}
+
+/*************************************
+ * Kernels for Jacobi Solver
+ *************************************/
 
 __global__ void calculateLambda(glm::vec3* particles, int** neighbors, int* num_neighbors, float* lambdas, int num_particles){
 	int index = threadIdx.x;
@@ -308,8 +336,8 @@ __global__ void calculateDeltaPi(glm::vec3* particles, int** neighbors, int* num
 	}
 }
 
-__global__ void calculateCurl(glm::vec3* particles, int** neighbors, int* num_neighbors, glm::vec3* velocities, glm::vec3* curl, int num_particles{
-	int indext = threadIdx.x;
+__global__ void calculateCurl(glm::vec3* particles, int** neighbors, int* num_neighbors, glm::vec3* velocities, glm::vec3* curl, int num_particles){
+	int index = threadIdx.x;
 	if(index < num_particles){
 		int* k_neighbors = neighbors[index];
 		int k = num_neighbors[index];
