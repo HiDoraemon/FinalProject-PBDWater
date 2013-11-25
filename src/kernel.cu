@@ -308,8 +308,8 @@ __global__ void calculateDeltaPi(glm::vec3* particles, int** neighbors, int* num
 	}
 }
 
-__global__ void applyVorticity(glm::vec3* particles, int** neighbors, int* num_neighbors, glm::vec3* velocities, glm::vec3* external_forces, int num_particles){
-	int index = threadIdx.x;
+__global__ void calculateCurl(glm::vec3* particles, int** neighbors, int* num_neighbors, glm::vec3* velocities, glm::vec3* curl, int num_particles{
+	int indext = threadIdx.x;
 	if(index < num_particles){
 		int* k_neighbors = neighbors[index];
 		int k = num_neighbors[index];
@@ -324,7 +324,34 @@ __global__ void applyVorticity(glm::vec3* particles, int** neighbors, int* num_n
 			gradient = wGradientSpikyKernel(p, particles[j_idx]);
 			accum += glm::cross(v_ij, gradient);
 		}
+		curl[index] = accum;
+	}
+}
 
+__global__ void applyVorticity(glm::vec3* particles, int** neighbors, int* num_neighbors, glm::vec3* curl, glm::vec3* external_forces, int num_particles){
+	int index = threadIdx.x;
+	if(index < num_particles){
+		int* k_neighbors = neighbors[index];
+		int k = num_neighbors[index];
+		glm::vec3 p = particles[index];
+		glm::vec3 w = curl[index];
+
+		int j_idx;
+		float mag_w;
+		glm::vec3 r, grad = glm::vec3(0.0f);
+		for(int i = 0; i < k; i++){
+			j_idx = k_neighbors[i];
+			r = particles[j_idx] - p;
+			mag_w = glm::length(curl[j_idx] - w);
+			grad.x += mag_w / r.x;
+			grad.y += mag_w / r.y;
+			grad.z += mag_w / r.z;
+		}
+		
+		glm::vec3 vorticity, N;
+		N = glm::normalize(grad);
+		vorticity = float(RELAXATION) * (glm::cross(N, w));
+		external_forces[index] += vorticity;
 	}
 }
 
