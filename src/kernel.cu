@@ -6,9 +6,9 @@
 #include "kernel.h"
 
 #if PRESSURE == 1
-	#define DELTA_Q 0.1*H
-	#define K 0.001
-	#define N 4
+	#define DELTA_Q (float)(0.1*H)
+	#define PRESSURE_K 0.001
+	#define PRESSURE_N 4
 #endif
 
 #if SHARED == 1
@@ -299,12 +299,32 @@ __global__ void calculateDeltaPi(glm::vec3* particles, int** neighbors, int* num
 		for(int i = 0; i < k; i++){
 			p_j_idx = k_neighbors[i];
 #if PRESSURE == 1
-			float k_term = wPoly6Kernel(p, particles[p_j_idx]) / wPoly6Kernel(p, d_q);
-			s_corr = -1.0f * K * pow(k_term, N);
+			k_term = wPoly6Kernel(p, particles[p_j_idx]) / wPoly6Kernel(p, d_q);
+			s_corr = -1.0f * PRESSURE_K * pow(k_term, PRESSURE_N);
 #endif
 			delta += (l + lambdas[p_j_idx] + s_corr) * wGradientSpikyKernel(p, particles[p_j_idx]);
 		}
 		delta_pos[index] = 1.0f / REST_DENSITY * delta;
+	}
+}
+
+__global__ void applyVorticity(glm::vec3* particles, int** neighbors, int* num_neighbors, glm::vec3* velocities, glm::vec3* external_forces, int num_particles){
+	int index = threadIdx.x;
+	if(index < num_particles){
+		int* k_neighbors = neighbors[index];
+		int k = num_neighbors[index];
+		glm::vec3 p = particles[index];
+		glm::vec3 v = velocities[index];
+
+		int j_idx;
+		glm::vec3 v_ij, gradient, accum = glm::vec3(0.0f);
+		for(int i = 0; i < k; i++){
+			j_idx = k_neighbors[i];
+			v_ij = velocities[j_idx] - v;
+			gradient = wGradientSpikyKernel(p, particles[j_idx]);
+			accum += glm::cross(v_ij, gradient);
+		}
+
 	}
 }
 

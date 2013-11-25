@@ -18,9 +18,9 @@
 #define PRESSURE 1
 
 #define REST_DENSITY 1000 // 1000 kg/m^3
-#define H 3.0 // smoothing radius
-#define POW_H_9 H*H*H*H*H*H*H*H*H // h^9
-#define POW_H_6 H*H*H*H*H*H // h^6
+#define H 3.0f // smoothing radius
+#define POW_H_9 (float)(H*H*H*H*H*H*H*H*H) // h^9
+#define POW_H_6 (float)(H*H*H*H*H*H) // h^6
 #define RELAXATION 0.1 // relaxation term in lambda calculation
 
 void checkCUDAError(const char *msg, int line);
