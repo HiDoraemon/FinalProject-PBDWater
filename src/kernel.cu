@@ -394,8 +394,9 @@ void initializeParticles(int N, glm::vec4* particles, glm::vec3* velocities, glm
 	float gravity = -2.0f;
     if(index < N)
     {
-		particles[index].x = (index % 50)-25;
-		particles[index].y = (index / 50)-25;
+		glm::vec3 rand = 50.0f*(generateRandomNumberFromThread(1.0f, index)-0.5f);
+		particles[index].x = rand.x;
+		particles[index].y = rand.y;
 		particles[index].z = 50.0f;
 		particles[index].w = 1.0f;
 
@@ -456,20 +457,20 @@ void tempCollisionResponse(int N, glm::vec4* pred_particles, glm::vec3* velociti
 			pred_particles[index].z = 100.0f-0.0001f;
 			velocities[index].z = -1.0f*velocities[index].z;
 		}
-		if(pred_particles[index].y < -50.0f){
-			pred_particles[index].y = -50.0f+0.0001f;
+		if(pred_particles[index].y < -40.0f){
+			pred_particles[index].y = -40.0f+0.0001f;
 			velocities[index].y = -1.0f*velocities[index].y;
 		}
-		if(pred_particles[index].y > 50.0f){
-			pred_particles[index].y = 50.0f-0.0001f;
+		if(pred_particles[index].y > 40.0f){
+			pred_particles[index].y = 40.0f-0.0001f;
 			velocities[index].y = -1.0f*velocities[index].y;
 		}
-		if(pred_particles[index].x < -50.0f){
-			pred_particles[index].x = -50.0f+0.0001f;
+		if(pred_particles[index].x < -40.0f){
+			pred_particles[index].x = -40.0f+0.0001f;
 			velocities[index].x = -1.0f*velocities[index].x;
 		}
-		if(pred_particles[index].x > 50.0f){
-			pred_particles[index].x = 50.0f-0.0001f;
+		if(pred_particles[index].x > 40.0f){
+			pred_particles[index].x = 40.0f-0.0001f;
 			velocities[index].x = -1.0f*velocities[index].x;
 		}
 	}
