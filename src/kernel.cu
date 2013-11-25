@@ -6,7 +6,7 @@
 #include "kernel.h"
 
 #if PRESSURE == 1
-	#define DELTA_Q (float)(0.1*H)
+	#define DELTA_Q (float)(0.2*H)
 	#define PRESSURE_K 0.001
 	#define PRESSURE_N 4
 #endif
@@ -20,15 +20,21 @@
 //GLOBALS
 dim3 threadsPerBlock(blockSize);
 
-int numObjects;
+int numParticles;
 const float planetMass = 3e8;
 const __device__ float starMass = 5e10;
 
 const float scene_scale = 2e2; //size of the height map in simulation space
 
-glm::vec4 * dev_pos;
-glm::vec3 * dev_vel;
-glm::vec3 * dev_acc;
+glm::vec4* particles;
+glm::vec4* pred_particles;
+glm::vec3* velocities;
+int* neighbors;
+int* num_neighbors;
+glm::vec3* curl;
+float* lambdas;
+glm::vec3* delta_pos;
+glm::vec3* external_forces;
 
 void checkCUDAError(const char *msg, int line = -1)
 {
@@ -182,12 +188,13 @@ void sendToVBO(int N, glm::vec4 * pos, float * vbo, int width, int height, float
 
     float c_scale_w = -2.0f / s_scale;
     float c_scale_h = -2.0f / s_scale;
+	float c_scale_z = 2.0f / s_scale;
 
     if(index<N)
     {
         vbo[4*index+0] = pos[index].x*c_scale_w;
         vbo[4*index+1] = pos[index].y*c_scale_h;
-        vbo[4*index+2] = 0;
+        vbo[4*index+2] = pos[index].z*c_scale_z;
         vbo[4*index+3] = 1;
     }
 }
@@ -234,11 +241,11 @@ __device__ glm::vec3 wGradientSpikyKernel(glm::vec3 p_i, glm::vec3 p_j){
 	return gradient_magnitude * glm::normalize(r);
 }
 
-__device__ float calculateRo(glm::vec3* particles, glm::vec3 p, int* p_neighbors, int p_num_neighbors){
+__device__ float calculateRo(glm::vec4* particles, glm::vec3 p, int* p_neighbors, int p_num_neighbors, int index){
 	glm::vec3 p_j;
 	float ro = 0.0f;
 	for(int i = 0; i < p_num_neighbors; i++){
-		p_j = particles[p_neighbors[i]];
+		p_j = glm::vec3(particles[p_neighbors[i + index * MAX_NEIGHBORS]]);
 		ro += wPoly6Kernel(p, p_j);
 	}
 	return ro;
@@ -248,10 +255,10 @@ __device__ glm::vec3 calculateCiGradient(glm::vec3 p_i, glm::vec3 p_j){
 	return -1.0f * wGradientSpikyKernel(p_i, p_j);
 }
 
-__device__ glm::vec3 calculateCiGradientAti(glm::vec3* particles, glm::vec3 p_i, int* p_neighbors, int p_num_neighbors){
+__device__ glm::vec3 calculateCiGradientAti(glm::vec4* particles, glm::vec3 p_i, int* neighbors, int p_num_neighbors, int index){
 	glm::vec3 accum = glm::vec3(0.0f);
 	for(int i = 0; i < p_num_neighbors; i++){
-		accum += wGradientSpikyKernel(p_i, particles[p_neighbors[i]]);
+		accum += wGradientSpikyKernel(p_i, glm::vec3(particles[neighbors[i + index * MAX_NEIGHBORS]]));
 	}
 	return accum;
 }
@@ -259,23 +266,23 @@ __device__ glm::vec3 calculateCiGradientAti(glm::vec3* particles, glm::vec3 p_i,
 /*************************************
  * Finding Neighboring Particles 
  *************************************/
-__global__ void findNeighbors(glm::vec3* particles, int** neighbors, int* num_neighbors, int num_particles){
+__global__ void findNeighbors(glm::vec4* pred_particles, int* neighbors, int* num_neighbors, int num_particles){
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
 	if(index < num_particles){
-		glm::vec3 p = particles[index];
-		int* p_neighbors = neighbors[index];
+		glm::vec3 p = glm::vec3(pred_particles[index]);
 		int num_p_neighbors = 0;
 		glm::vec3 p_j, r;
-		for(int i = 0; i < num_particles && num_p_neighbors < 10; i++){
+		for(int i = 0; i < num_particles && num_p_neighbors < MAX_NEIGHBORS; i++){
 			if(i != index){
-				p_j = particles[i];
+				p_j = glm::vec3(pred_particles[i]);
 				r = p_j - p;
 				if(glm::length(r) <= H){
-					p_neighbors[num_p_neighbors] = i;
+					neighbors[num_p_neighbors + index * MAX_NEIGHBORS] = i;
 					++num_p_neighbors;
 				}
 			}
 		}
+		num_neighbors[index] = num_p_neighbors;
 	}
 }
 
@@ -283,38 +290,36 @@ __global__ void findNeighbors(glm::vec3* particles, int** neighbors, int* num_ne
  * Kernels for Jacobi Solver
  *************************************/
 
-__global__ void calculateLambda(glm::vec3* particles, int** neighbors, int* num_neighbors, float* lambdas, int num_particles){
-	int index = threadIdx.x;
+__global__ void calculateLambda(glm::vec4* particles, int* neighbors, int* num_neighbors, float* lambdas, int num_particles){
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if(index < num_particles){
-		int* k_neighbors = neighbors[index];
 		int k = num_neighbors[index];
-		glm::vec3 p = particles[index];
+		glm::vec3 p = glm::vec3(particles[index]);
 
-		float p_i = calculateRo(particles, p, k_neighbors, k);
+		float p_i = calculateRo(particles, p, neighbors, k, index);
 		float C_i = (p_i / REST_DENSITY) - 1.0f;
 
 		
 		float C_i_gradient, sum_gradients = 0.0f;
 		for(int i = 0; i < k; i++){
 			// Calculate gradient when k = j
-			C_i_gradient = glm::length(calculateCiGradient(p, particles[k_neighbors[i]]));
+			C_i_gradient = glm::length(calculateCiGradient(p, glm::vec3(particles[neighbors[i + index * MAX_NEIGHBORS]])));
 			sum_gradients += (C_i_gradient * C_i_gradient);
 		}
 
 		// Add gradient when k = i
-		C_i_gradient = glm::length(calculateCiGradientAti(particles, p, k_neighbors, k));
+		C_i_gradient = glm::length(calculateCiGradientAti(particles, p, neighbors, k, index));
 		sum_gradients += (C_i_gradient * C_i_gradient);
 
 		lambdas[index] = -1.0f * (C_i / (sum_gradients + RELAXATION)); 
 	}
 }
 
-__global__ void calculateDeltaPi(glm::vec3* particles, int** neighbors, int* num_neighbors, float* lambdas, glm::vec3* delta_pos, int num_particles){
-	int index = threadIdx.x;
+__global__ void calculateDeltaPi(glm::vec4* particles, int* neighbors, int* num_neighbors, float* lambdas, glm::vec3* delta_pos, int num_particles){
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if(index < num_particles){
-		int* k_neighbors = neighbors[index];
 		int k = num_neighbors[index];
-		glm::vec3 p = particles[index];
+		glm::vec3 p = glm::vec3(particles[index]);
 		float l = lambdas[index];
 		
 		glm::vec3 delta = glm::vec3(0.0f);
@@ -325,51 +330,49 @@ __global__ void calculateDeltaPi(glm::vec3* particles, int** neighbors, int* num
 #endif
 		float s_corr = 0.0f;
 		for(int i = 0; i < k; i++){
-			p_j_idx = k_neighbors[i];
+			p_j_idx = neighbors[i + index * MAX_NEIGHBORS];
 #if PRESSURE == 1
-			k_term = wPoly6Kernel(p, particles[p_j_idx]) / wPoly6Kernel(p, d_q);
+			k_term = wPoly6Kernel(p, glm::vec3(particles[p_j_idx])) / wPoly6Kernel(p, d_q);
 			s_corr = -1.0f * PRESSURE_K * pow(k_term, PRESSURE_N);
 #endif
-			delta += (l + lambdas[p_j_idx] + s_corr) * wGradientSpikyKernel(p, particles[p_j_idx]);
+			delta += (l + lambdas[p_j_idx] + s_corr) * wGradientSpikyKernel(p, glm::vec3(particles[p_j_idx]));
 		}
 		delta_pos[index] = 1.0f / REST_DENSITY * delta;
 	}
 }
 
-__global__ void calculateCurl(glm::vec3* particles, int** neighbors, int* num_neighbors, glm::vec3* velocities, glm::vec3* curl, int num_particles){
-	int index = threadIdx.x;
+__global__ void calculateCurl(glm::vec4* particles, int* neighbors, int* num_neighbors, glm::vec3* velocities, glm::vec3* curl, int num_particles){
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if(index < num_particles){
-		int* k_neighbors = neighbors[index];
 		int k = num_neighbors[index];
-		glm::vec3 p = particles[index];
+		glm::vec3 p = glm::vec3(particles[index]);
 		glm::vec3 v = velocities[index];
 
 		int j_idx;
 		glm::vec3 v_ij, gradient, accum = glm::vec3(0.0f);
 		for(int i = 0; i < k; i++){
-			j_idx = k_neighbors[i];
+			j_idx = neighbors[i + index * MAX_NEIGHBORS];
 			v_ij = velocities[j_idx] - v;
-			gradient = wGradientSpikyKernel(p, particles[j_idx]);
+			gradient = wGradientSpikyKernel(p, glm::vec3(particles[j_idx]));
 			accum += glm::cross(v_ij, gradient);
 		}
 		curl[index] = accum;
 	}
 }
 
-__global__ void applyVorticity(glm::vec3* particles, int** neighbors, int* num_neighbors, glm::vec3* curl, glm::vec3* external_forces, int num_particles){
-	int index = threadIdx.x;
+__global__ void applyVorticity(glm::vec4* particles, int* neighbors, int* num_neighbors, glm::vec3* curl, glm::vec3* external_forces, int num_particles){
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if(index < num_particles){
-		int* k_neighbors = neighbors[index];
 		int k = num_neighbors[index];
-		glm::vec3 p = particles[index];
+		glm::vec3 p = glm::vec3(particles[index]);
 		glm::vec3 w = curl[index];
 
 		int j_idx;
 		float mag_w;
 		glm::vec3 r, grad = glm::vec3(0.0f);
 		for(int i = 0; i < k; i++){
-			j_idx = k_neighbors[i];
-			r = particles[j_idx] - p;
+			j_idx = neighbors[i + index * MAX_NEIGHBORS];
+			r = glm::vec3(particles[j_idx]) - p;
 			mag_w = glm::length(curl[j_idx] - w);
 			grad.x += mag_w / r.x;
 			grad.y += mag_w / r.y;
@@ -377,9 +380,98 @@ __global__ void applyVorticity(glm::vec3* particles, int** neighbors, int* num_n
 		}
 		
 		glm::vec3 vorticity, N;
-		N = glm::normalize(grad);
+		N = 1.0f/(glm::length(grad) + .001f) * grad;
 		vorticity = float(RELAXATION) * (glm::cross(N, w));
 		external_forces[index] += vorticity;
+	}
+}
+
+
+__global__
+void initializeParticles(int N, glm::vec4* particles, glm::vec3* velocities, glm::vec3* external_forces)
+{
+    int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+	float gravity = -2.0f;
+    if(index < N)
+    {
+		particles[index].x = (index % 50)-25;
+		particles[index].y = (index / 50)-25;
+		particles[index].z = 50.0f;
+		particles[index].w = 1.0f;
+
+		velocities[index] = glm::vec3(0.0f);
+		
+		external_forces[index] = glm::vec3(0.0f,0.0f,gravity);
+    }
+}
+
+//Simple Euler integration scheme
+__global__
+void applyExternalForces(int N, float dt, glm::vec4* pred_particles, glm::vec4* particles, glm::vec3* velocities, glm::vec3* external_forces)
+{
+    int index = threadIdx.x + (blockIdx.x * blockDim.x);
+
+    if(index < N){
+		velocities[index] = velocities[index] + dt*external_forces[index];
+		pred_particles[index] = particles[index] + dt*glm::vec4(velocities[index],0.0f);
+	}
+}
+
+__global__
+void updatePosition(int N, glm::vec4* pred_particles, glm::vec4* particles)
+{
+    int index = threadIdx.x + (blockIdx.x * blockDim.x);
+    if(index < N){
+		particles[index] = pred_particles[index];
+	}
+}
+
+__global__
+void updatePredictedPosition(int N, glm::vec4* pred_particles, glm::vec3* delta_pos)
+{
+    int index = threadIdx.x + (blockIdx.x * blockDim.x);
+    if(index < N){
+		pred_particles[index] = pred_particles[index]+glm::vec4(delta_pos[index],0.0f);
+	}
+}
+
+__global__
+void updateVelocity(int N, glm::vec4* pred_particles, glm::vec4* particles, glm::vec3* velocities, float dt)
+{
+    int index = threadIdx.x + (blockIdx.x * blockDim.x);
+    if(index < N){
+		velocities[index] = glm::vec3((1.0f/dt)*(pred_particles[index] - particles[index]));
+	}
+}
+
+__global__
+void tempCollisionResponse(int N, glm::vec4* pred_particles, glm::vec3* velocities){
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+    if(index < N){
+		if(pred_particles[index].z < 0.0f){
+			pred_particles[index].z = 0.0001f;
+			velocities[index].z = -1.0f*velocities[index].z;
+		}
+		if(pred_particles[index].z > 100.0f){
+			pred_particles[index].z = 100.0f-0.0001f;
+			velocities[index].z = -1.0f*velocities[index].z;
+		}
+		if(pred_particles[index].y < -50.0f){
+			pred_particles[index].y = -50.0f+0.0001f;
+			velocities[index].y = -1.0f*velocities[index].y;
+		}
+		if(pred_particles[index].y > 50.0f){
+			pred_particles[index].y = 50.0f-0.0001f;
+			velocities[index].y = -1.0f*velocities[index].y;
+		}
+		if(pred_particles[index].x < -50.0f){
+			pred_particles[index].x = -50.0f+0.0001f;
+			velocities[index].x = -1.0f*velocities[index].x;
+		}
+		if(pred_particles[index].x > 50.0f){
+			pred_particles[index].x = 50.0f-0.0001f;
+			velocities[index].x = -1.0f*velocities[index].x;
+		}
 	}
 }
 
@@ -390,45 +482,81 @@ __global__ void applyVorticity(glm::vec3* particles, int** neighbors, int* num_n
 //Initialize memory, update some globals
 void initCuda(int N)
 {
-    numObjects = N;
+	numParticles = N;
     dim3 fullBlocksPerGrid((int)ceil(float(N)/float(blockSize)));
 
-    cudaMalloc((void**)&dev_pos, N*sizeof(glm::vec4));
-    checkCUDAErrorWithLine("Kernel failed!");
-    cudaMalloc((void**)&dev_vel, N*sizeof(glm::vec3));
-    checkCUDAErrorWithLine("Kernel failed!");
-    cudaMalloc((void**)&dev_acc, N*sizeof(glm::vec3));
-    checkCUDAErrorWithLine("Kernel failed!");
+    cudaMalloc((void**)&particles, N*sizeof(glm::vec4));
+    checkCUDAErrorWithLine("particles cudamalloc failed!");
+	cudaMalloc((void**)&pred_particles, N*sizeof(glm::vec4));
+    checkCUDAErrorWithLine("pred_particles cudamalloc failed!");
+    cudaMalloc((void**)&velocities, N*sizeof(glm::vec3));
+    checkCUDAErrorWithLine("velocities cudamalloc failed!");
 
-    generateRandomPosArray<<<fullBlocksPerGrid, blockSize>>>(1, numObjects, dev_pos, scene_scale, planetMass);
-    checkCUDAErrorWithLine("Kernel failed!");
-    generateCircularVelArray<<<fullBlocksPerGrid, blockSize>>>(2, numObjects, dev_vel, dev_pos);
+	cudaMalloc((void**)&neighbors, MAX_NEIGHBORS*N*sizeof(int));
+	cudaMalloc((void**)&num_neighbors, N*sizeof(int));
+    checkCUDAErrorWithLine("num_neighbors cudamalloc failed!");
+
+    cudaMalloc((void**)&curl, N*sizeof(glm::vec3));
+    checkCUDAErrorWithLine("curl cudamalloc failed!");
+	cudaMalloc((void**)&lambdas, N*sizeof(float));
+    checkCUDAErrorWithLine("lambdas cudamalloc failed!");
+	cudaMalloc((void**)&delta_pos, N*sizeof(glm::vec3));
+    checkCUDAErrorWithLine("delta_pos cudamalloc failed!");
+	cudaMalloc((void**)&external_forces, N*sizeof(glm::vec3));
+    checkCUDAErrorWithLine("external_forces cudamalloc failed!");
+
+    initializeParticles<<<fullBlocksPerGrid, blockSize>>>(N, particles, velocities, external_forces);
     checkCUDAErrorWithLine("Kernel failed!");
     cudaThreadSynchronize();
 }
 
 void cudaNBodyUpdateWrapper(float dt)
 {
-    dim3 fullBlocksPerGrid((int)ceil(float(numObjects)/float(blockSize)));
-    updateF<<<fullBlocksPerGrid, blockSize, blockSize*sizeof(glm::vec4)>>>(numObjects, dt, dev_pos, dev_vel, dev_acc);
-    checkCUDAErrorWithLine("Kernel failed!");
-    updateS<<<fullBlocksPerGrid, blockSize>>>(numObjects, dt, dev_pos, dev_vel, dev_acc);
-    checkCUDAErrorWithLine("Kernel failed!");
+    dim3 fullBlocksPerGrid((int)ceil(float(numParticles)/float(blockSize)));
+    applyExternalForces<<<fullBlocksPerGrid, blockSize>>>(numParticles, dt, pred_particles, particles, velocities, external_forces);
+    checkCUDAErrorWithLine("applyExternalForces failed!");
+	findNeighbors<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, numParticles);
+    checkCUDAErrorWithLine("findNeighbors failed!");
+	for(int i = 0; i < SOLVER_ITERATIONS; i++){
+		calculateLambda<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, lambdas, numParticles);
+		calculateDeltaPi<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, lambdas, delta_pos, numParticles);
+		//PEFORM COLLISION DETECTION AND RESPONSE
+		tempCollisionResponse<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, velocities);
+		updatePredictedPosition<<<fullBlocksPerGrid, blockSize>>>(numParticles,pred_particles, delta_pos);
+	}
+
+
+	updateVelocity<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, particles, velocities, dt);
+	//calculateCurl<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, velocities, curl, numParticles);
+	//applyVorticity<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, curl, external_forces, numParticles);
+	updatePosition<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, particles);
+    checkCUDAErrorWithLine("updatePosition failed!");
     cudaThreadSynchronize();
 }
 
 void cudaUpdateVBO(float * vbodptr, int width, int height)
 {
-    dim3 fullBlocksPerGrid((int)ceil(float(numObjects)/float(blockSize)));
-    sendToVBO<<<fullBlocksPerGrid, blockSize>>>(numObjects, dev_pos, vbodptr, width, height, scene_scale);
+    dim3 fullBlocksPerGrid((int)ceil(float(numParticles)/float(blockSize)));
+    sendToVBO<<<fullBlocksPerGrid, blockSize>>>(numParticles, particles, vbodptr, width, height, scene_scale);
     cudaThreadSynchronize();
 }
 
 void cudaUpdatePBO(float4 * pbodptr, int width, int height)
 {
     dim3 fullBlocksPerGrid((int)ceil(float(width*height)/float(blockSize)));
-    sendToPBO<<<fullBlocksPerGrid, blockSize, blockSize*sizeof(glm::vec4)>>>(numObjects, dev_pos, pbodptr, width, height, scene_scale);
+    sendToPBO<<<fullBlocksPerGrid, blockSize, blockSize*sizeof(glm::vec4)>>>(numParticles, particles, pbodptr, width, height, scene_scale);
     cudaThreadSynchronize();
 }
 
+void freeCuda(){
+	cudaFree(particles);
+	cudaFree(pred_particles);
+	cudaFree(velocities);
+	cudaFree(neighbors);
+	cudaFree(num_neighbors);
+	cudaFree(curl);
+	cudaFree(lambdas);
+	cudaFree(delta_pos);
+	cudaFree(external_forces);
+}
 

@@ -53,7 +53,7 @@ const int field_height = 800;
 
 float fovy = 60.0f;
 float zNear = 0.10;
-float zFar = 5.0;
+float zFar = 10000000.0f;
 
 glm::mat4 projection;
 glm::mat4 view;

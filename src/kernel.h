@@ -17,6 +17,8 @@
 #define SHARED 0
 #define PRESSURE 1
 
+#define SOLVER_ITERATIONS 10
+#define MAX_NEIGHBORS 10
 #define REST_DENSITY 1000 // 1000 kg/m^3
 #define H 3.0f // smoothing radius
 #define POW_H_9 (float)(H*H*H*H*H*H*H*H*H) // h^9
@@ -28,4 +30,5 @@ void cudaNBodyUpdateWrapper(float dt);
 void initCuda(int N);
 void cudaUpdatePBO(float4 * pbodptr, int width, int height);
 void cudaUpdateVBO(float * vbodptr, int width, int height);
+void freeCuda();
 #endif

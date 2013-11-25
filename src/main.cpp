@@ -4,8 +4,8 @@
 
 #include "main.h"
 
-#define N_FOR_VIS 25
-#define DT 0.2
+#define N_FOR_VIS 2500
+#define DT 0.05
 #define VISUALIZE 1
 //-------------------------------
 //-------------MAIN--------------
@@ -150,6 +150,7 @@ void keyboard(unsigned char key, int x, int y)
     switch (key) 
     {
         case(27):
+			freeCuda();
             exit(1);
             break;
     }
@@ -255,7 +256,7 @@ void initVAO(void)
         }
     }
 
-    for(int i = 0; i < N_FOR_VIS+1; i++)
+    for(int i = 0; i < N_FOR_VIS; i++)
     {
         bodies[4*i+0] = 0.0f;
         bodies[4*i+1] = 0.0f;
@@ -280,10 +281,10 @@ void initVAO(void)
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, 6*num_faces*sizeof(GLuint), indices, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, planetVBO);
-    glBufferData(GL_ARRAY_BUFFER, 4*(N_FOR_VIS+1)*sizeof(GLfloat), bodies, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 4*(N_FOR_VIS)*sizeof(GLfloat), bodies, GL_DYNAMIC_DRAW);
     
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, planetIBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, (N_FOR_VIS+1)*sizeof(GLuint), bindices, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, (N_FOR_VIS)*sizeof(GLuint), bindices, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
