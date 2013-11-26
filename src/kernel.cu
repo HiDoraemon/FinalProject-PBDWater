@@ -457,20 +457,20 @@ void tempCollisionResponse(int N, glm::vec4* pred_particles, glm::vec3* velociti
 			pred_particles[index].z = 100.0f-0.0001f;
 			velocities[index].z = -1.0f*velocities[index].z;
 		}
-		if(pred_particles[index].y < -40.0f){
-			pred_particles[index].y = -40.0f+0.0001f;
+		if(pred_particles[index].y < -30.0f){
+			pred_particles[index].y = -30.0f+0.0001f;
 			velocities[index].y = -1.0f*velocities[index].y;
 		}
-		if(pred_particles[index].y > 40.0f){
-			pred_particles[index].y = 40.0f-0.0001f;
+		if(pred_particles[index].y > 30.0f){
+			pred_particles[index].y = 30.0f-0.0001f;
 			velocities[index].y = -1.0f*velocities[index].y;
 		}
-		if(pred_particles[index].x < -40.0f){
-			pred_particles[index].x = -40.0f+0.0001f;
+		if(pred_particles[index].x < -30.0f){
+			pred_particles[index].x = -30.0f+0.0001f;
 			velocities[index].x = -1.0f*velocities[index].x;
 		}
-		if(pred_particles[index].x > 40.0f){
-			pred_particles[index].x = 40.0f-0.0001f;
+		if(pred_particles[index].x > 30.0f){
+			pred_particles[index].x = 30.0f-0.0001f;
 			velocities[index].x = -1.0f*velocities[index].x;
 		}
 	}
