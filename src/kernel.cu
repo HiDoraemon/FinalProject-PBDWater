@@ -6,7 +6,7 @@
 #include "kernel.h"
 
 #if PRESSURE == 1
-	#define DELTA_Q (float)(0.2*H)
+	#define DELTA_Q (float)(0.3*H)
 	#define PRESSURE_K 0.001
 	#define PRESSURE_N 4
 #endif
@@ -238,7 +238,7 @@ __device__ glm::vec3 wGradientSpikyKernel(glm::vec3 p_i, glm::vec3 p_j){
 	glm::vec3 r = p_i - p_j;
 	float hr_term = H - glm::length(r);
 	float gradient_magnitude = 45.0f / (PI * POW_H_6) * hr_term * hr_term;
-	return gradient_magnitude * glm::normalize(r);
+	return gradient_magnitude * 1.0f / (glm::length(r) + 0.001f) * r;
 }
 
 __device__ float calculateRo(glm::vec4* particles, glm::vec3 p, int* p_neighbors, int p_num_neighbors, int index){
@@ -252,7 +252,7 @@ __device__ float calculateRo(glm::vec4* particles, glm::vec3 p, int* p_neighbors
 }
 
 __device__ glm::vec3 calculateCiGradient(glm::vec3 p_i, glm::vec3 p_j){
-	return -1.0f * wGradientSpikyKernel(p_i, p_j);
+	return -1.0f / float(REST_DENSITY) * wGradientSpikyKernel(p_i, p_j);
 }
 
 __device__ glm::vec3 calculateCiGradientAti(glm::vec4* particles, glm::vec3 p_i, int* neighbors, int p_num_neighbors, int index){
@@ -260,7 +260,7 @@ __device__ glm::vec3 calculateCiGradientAti(glm::vec4* particles, glm::vec3 p_i,
 	for(int i = 0; i < p_num_neighbors; i++){
 		accum += wGradientSpikyKernel(p_i, glm::vec3(particles[neighbors[i + index * MAX_NEIGHBORS]]));
 	}
-	return accum;
+	return 1.0f / float(REST_DENSITY) * accum;
 }
 
 /*************************************
@@ -397,7 +397,7 @@ void initializeParticles(int N, glm::vec4* particles, glm::vec3* velocities, glm
 		glm::vec3 rand = 50.0f*(generateRandomNumberFromThread(1.0f, index)-0.5f);
 		particles[index].x = rand.x;
 		particles[index].y = rand.y;
-		particles[index].z = 50.0f;
+		particles[index].z = 50.0f + rand.z;
 		particles[index].w = 1.0f;
 
 		velocities[index] = glm::vec3(0.0f);
@@ -528,8 +528,8 @@ void cudaNBodyUpdateWrapper(float dt)
 
 
 	updateVelocity<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, particles, velocities, dt);
-	//calculateCurl<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, velocities, curl, numParticles);
-	//applyVorticity<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, curl, external_forces, numParticles);
+	calculateCurl<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, velocities, curl, numParticles);
+	applyVorticity<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, curl, external_forces, numParticles);
 	updatePosition<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, particles);
     checkCUDAErrorWithLine("updatePosition failed!");
     cudaThreadSynchronize();
