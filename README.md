@@ -17,19 +17,22 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 
 ###Proposed Features:
 *   Particle-based position based dynamics fluid simulator that runs on the GPU
-*   Uses the density constraint to enforce incompressibility
-*   Artificial pressure term to simulate surface tension
-*   Vorticity confinement to replace energy
 *   Viscosity term
 *   GPU Hash Grid for optimization of finding particle neighbors
 *   Meshless rendering (bilateral Gaussian or curvature flow)
+*   Caustics rendering for water?
+
+###Implemented Features:
+*   Uses the density constraint to enforce incompressibility
+*   Artificial pressure term to simulate surface tension
+*   Vorticity confinement to replace energy
 
 -------
 
 ###Tentative Schedule
-* Mon, 11/25 (Alpha) 
- + Setting up framework for constraint and particle system
- + Set up visualization for particles 
+* Mon, 11/25 ([Alpha](#alpha-results))
+ + ~~Setting up framework for constraint and particle system~~
+ + ~~Set up visualization for particles~~
 * Mon, 12/9 (Last day of class)
  + begin writing paper
  + Simulator with position based dynamics finished
@@ -40,8 +43,13 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 
 ------
 
-###External Libraries:
-[Jacobi Iterator](https://code.google.com/p/jacobi-in-parallel/source/browse/jacobi/trunk/jacobiCUDA/cudaJacobi.cu?spec=svn34&r=34)
+###Alpha Results
+
+[Slides](https://github.com/harmoli/FinalProject-PBDWater/raw/master/CIS565-Alpha.pdf)
+
+[Notes](https://github.com/harmoli/FinalProject-PBDWater/raw/master/CIS565-Alpha-Notes.pdf)
+
+[Video](https://vimeo.com/80338399)
 
 ------
 
