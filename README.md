@@ -53,6 +53,12 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 
 ------
 
+###Acknowledgments:
+
+Many thanks to Mohammed Sakr(3dsakr@gmail.com), who has reached out with bug fixes and suggestions.
+
+------
+
 ###References:
 ####Fluid Simulation
 * [Position Based Fluids](http://mmacklin.com/pbf_sig_preprint.pdf) : M. Muller, M. Macklin 

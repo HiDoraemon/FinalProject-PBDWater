@@ -7,7 +7,7 @@
 
 #if PRESSURE == 1
 	#define DELTA_Q (float)(0.3*H)
-	#define PRESSURE_K 0.001
+	#define PRESSURE_K 0.1
 	#define PRESSURE_N 4
 #endif
 
