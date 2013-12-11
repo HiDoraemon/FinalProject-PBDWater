@@ -4,7 +4,9 @@
 
 #include "main.h"
 
-#define N_FOR_VIS 10000
+using namespace glm;
+
+#define N_FOR_VIS 5000
 #define DT 0.05
 #define VISUALIZE 1
 //-------------------------------
@@ -13,6 +15,34 @@
 
 int main(int argc, char** argv)
 {
+	//load sphere
+	geom.type = SPHERE;
+	geom.rotation = vec3(0,0,0);
+	geom.translation = vec3(0,2,0);
+	geom.scale = vec3(2,2,2);
+	geom.transform = utilityCore::buildTransformationMatrix(geom.translation, geom.rotation, geom.scale);
+
+	//load mesh
+	bool loadedScene = false;
+	for(int i=1; i<argc; i++){
+		string header; string data;
+		istringstream liness(argv[i]);
+		getline(liness, header, '='); getline(liness, data, '=');
+		if(strcmp(header.c_str(), "mesh")==0){
+		  //renderScene = new scene(data);
+		  mesh = new obj();
+		  objLoader* loader = new objLoader(data, mesh);
+		  mesh->buildVBOs();
+		  delete loader;
+		  loadedScene = true;
+		}
+	}
+
+	  if(!loadedScene){
+		cout << "Usage: mesh=[obj file]" << endl;
+		return 0;
+	  }
+
     // Launch CUDA/GL
 
     init(argc, argv);
@@ -21,14 +51,14 @@ int main(int argc, char** argv)
     initPBO(&pbo);
     cudaGLRegisterBufferObject( planetVBO );
     
-#if VISUALIZE == 1 
+#if VISUALIZE == 1
     initCuda(N_FOR_VIS);
 #else
     initCuda(2*128);
 #endif
 
     projection = glm::perspective(fovy, float(width)/float(height), zNear, zFar);
-    view = glm::lookAt(cameraPosition, glm::vec3(0), glm::vec3(0,0,1));
+    view = glm::lookAt(cameraPosition-glm::vec3(0,0,10), glm::vec3(0), glm::vec3(0,0,1));
 
     projection = projection * view;
 
@@ -91,7 +121,7 @@ void display()
     runCuda();
 
     char title[100];
-    sprintf( title, "565 NBody sim [%0.2f fps]", fps );
+    sprintf( title, "565 Final Project [%0.2f fps]", fps );
     glutSetWindowTitle(title);
 
     glBindBuffer( GL_PIXEL_UNPACK_BUFFER, pbo);
@@ -105,7 +135,7 @@ void display()
     //glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     //glDrawElements(GL_TRIANGLES, 6*field_width*field_height,  GL_UNSIGNED_INT, 0);
 
-    glUseProgram(program[HEIGHT_FIELD]);
+	glUseProgram(program[HEIGHT_FIELD]);
 
     glEnableVertexAttribArray(positionLocation);
     glEnableVertexAttribArray(texcoordsLocation);
@@ -139,6 +169,45 @@ void display()
 
     glDisableVertexAttribArray(positionLocation);
 
+	//mesh
+	/*glUseProgram(program[2]);
+
+    glEnableVertexAttribArray(positionLocation);
+    glEnableVertexAttribArray(texcoordsLocation);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, meshVBO);
+    glVertexAttribPointer((GLuint)positionLocation, 3, GL_FLOAT, GL_FALSE, 0, 0); 
+
+    glBindBuffer(GL_ARRAY_BUFFER, meshTBO);
+    glVertexAttribPointer((GLuint)texcoordsLocation, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshIBO);
+
+	glDrawElements(GL_TRIANGLES, mesh->getVBOsize(),  GL_UNSIGNED_INT, 0);
+
+    glDisableVertexAttribArray(positionLocation);
+    glDisableVertexAttribArray(texcoordsLocation);*/
+
+	//sphere
+	glUseProgram(program[2]);
+
+    glEnableVertexAttribArray(positionLocation);
+    glEnableVertexAttribArray(texcoordsLocation);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+    glVertexAttribPointer((GLuint)positionLocation, 4, GL_FLOAT, GL_FALSE, 0, 0); 
+
+    glBindBuffer(GL_ARRAY_BUFFER, sphereTBO);
+    glVertexAttribPointer((GLuint)texcoordsLocation, 4, GL_FLOAT, GL_FALSE, 0, 0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereIBO);
+
+	int num_circles = 25;
+	glDrawElements(GL_TRIANGLES, (num_circles-2)*num_circles*6+6*num_circles,  GL_UNSIGNED_INT, 0);
+
+    glDisableVertexAttribArray(positionLocation);
+    glDisableVertexAttribArray(texcoordsLocation);
+
 #endif
     glutPostRedisplay();
     glutSwapBuffers();
@@ -167,7 +236,7 @@ void init(int argc, char* argv[])
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
     glutInitWindowSize(width, height);
-    glutCreateWindow("565 NBody sim");
+    glutCreateWindow("565 Final Project");
 
     // Init GLEW
     glewInit();
@@ -227,8 +296,8 @@ void initVAO(void)
     GLuint *indices    = new GLuint[6*num_faces];
     GLuint *bindices   = new GLuint[N_FOR_VIS+1];
 
-    glm::vec4 ul(-1.0,-1.0,1.0,1.0);
-    glm::vec4 lr(1.0,1.0,0.0,0.0);
+    glm::vec4 ul(-20.0,-20.0,20.0,20.0);
+    glm::vec4 lr(20.0,20.0,0.0,0.0);
 
     for(int i = 0; i < field_width; ++i)
     {
@@ -279,7 +348,7 @@ void initVAO(void)
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, planeIBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, 6*num_faces*sizeof(GLuint), indices, GL_STATIC_DRAW);
-
+	
     glBindBuffer(GL_ARRAY_BUFFER, planetVBO);
     glBufferData(GL_ARRAY_BUFFER, 4*(N_FOR_VIS)*sizeof(GLfloat), bodies, GL_DYNAMIC_DRAW);
     
@@ -288,6 +357,9 @@ void initVAO(void)
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+	//drawMesh();
+	drawSphere();
 
     delete[] vertices;
     delete[] texcoords;
@@ -326,6 +398,24 @@ void initShaders(GLuint * program)
     {
         glUniform3fv(location, 1, &cameraPosition[0]);
     }
+
+	program[2] = glslUtility::createProgram("shaders/meshVS.glsl", "shaders/meshFS.glsl", attributeLocations, 2);
+    glUseProgram(program[2]);
+    
+    if ((location = glGetUniformLocation(program[2], "u_image")) != -1)
+    {
+        glUniform1i(location, 0);
+    }
+    if ((location = glGetUniformLocation(program[2], "u_projMatrix")) != -1)
+    {
+		 
+		glm::mat4 result = projection*geom.transform;
+        glUniformMatrix4fv(location, 1, GL_FALSE, &result[0][0]);
+    }
+    if ((location = glGetUniformLocation(program[2], "u_height")) != -1)
+    {
+        glUniform1i(location, 0);
+    }
 }
 
 //-------------------------------
@@ -355,4 +445,135 @@ void deleteTexture(GLuint* tex)
 void shut_down(int return_code)
 {
     exit(return_code);
+}
+
+void drawMesh(){
+    glGenBuffers(1, &meshVBO);
+    glGenBuffers(1, &meshTBO);
+    glGenBuffers(1, &meshIBO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, meshVBO);
+    glBufferData(GL_ARRAY_BUFFER, mesh->getVBOsize()*sizeof(float), mesh->getVBO(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, meshTBO);
+	glBufferData(GL_ARRAY_BUFFER, mesh->getVBOsize()*sizeof(float), mesh->getVBO(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshIBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->getIBOsize()*sizeof(int), mesh->getIBO(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
+void drawSphere(){
+	int num_circles = 25;
+    int num_verts = ((num_circles-1)*num_circles+2)*4;
+	int num_indices = (num_circles-2)*num_circles*6+6*num_circles;
+
+    GLfloat *vertices  = new GLfloat[num_verts];
+    GLfloat *texcoords = new GLfloat[num_verts]; 
+    GLuint *indices    = new GLuint[num_indices];
+
+    //VERTICES AND NORMALS
+
+	float height_angle;
+	float radius;
+	float y_value;
+
+	vertices[0] = 0;
+	vertices[1] = 1;
+	vertices[2] = 0;
+	vertices[3] = 1;
+	texcoords[0] = 0;
+	texcoords[1] = 1;
+	texcoords[2] = 0;
+	texcoords[3] = 1;
+	int index = 4;
+
+	for (int i = 1; i < num_circles; i++){
+		height_angle = PI/2 - i*(PI/num_circles);
+		radius = abs(cos(height_angle));
+		y_value = sin(height_angle);
+		for (int j = 0; j < num_circles; j++){
+			vertices[index] = radius*cos(j*(2*PI/num_circles));
+			vertices[index+1] = y_value;
+			vertices[index+2] = radius*sin(j*(2*PI/num_circles));
+			vertices[index+3] = 1;
+			texcoords[index] = radius*cos(j*(2*PI/num_circles));
+			texcoords[index+1] = y_value;
+			texcoords[index+2] = radius*sin(j*(2*PI/num_circles));
+			texcoords[index+3] = 1; 
+			index+=4;
+		}
+	}
+
+	vertices[index] = 0;
+	vertices[index+1] = -1;
+	vertices[index+2] = 0;
+	vertices[index+3] = 1;
+	texcoords[index] = 0;
+	texcoords[index+1] = -1;
+	texcoords[index+2] = 0;
+	texcoords[index+3] = 1;
+
+    //INDICES
+
+	//TOP AND BOTTOM
+	int x = 1;
+	for (int i = 0; i < (num_circles*3); i+=3){
+		indices[i] = 0;
+		indices[i+1] = x;
+		indices[i+2] = x+1;
+		x++;
+	}
+	indices[num_circles*3-1] = 1;
+	x = ((num_circles-1)*num_circles+2-1)-1;
+	for (int i = num_circles*3; i < num_circles*3*2; i+=3){
+		indices[i] = ((num_circles-1)*num_circles+2-1); //last index
+		indices[i+1] = x;
+		indices[i+2] = x-1;
+		x--;
+	}
+	indices[num_circles*3*2-1] = ((num_circles-1)*num_circles+2-1)-1;
+
+	//MIDDLE SECTION
+	x = 1;
+	int y = 1+num_circles;
+	for (int i = num_circles*3*2; i < (num_circles-2)*num_circles*6+6*num_circles; i+=6){
+		indices[i] = x;
+		indices[i+1] = x+1;
+		indices[i+2] = y;
+
+		indices[i+3] = x+1;
+		indices[i+4] = y;
+		indices[i+5] = y+1;
+		x++;
+		y++;
+		if (x % num_circles == 1){
+			indices[i+4] = x-1;
+			indices[i+5] = x-num_circles;
+			//std::cout<<x<<" "<<y<<std::endl;
+		}
+
+	}
+
+    glGenBuffers(1, &sphereVBO);
+    glGenBuffers(1, &sphereTBO);
+    glGenBuffers(1, &sphereIBO);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+    glBufferData(GL_ARRAY_BUFFER, num_verts*sizeof(GLfloat), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, sphereTBO);
+    glBufferData(GL_ARRAY_BUFFER, num_verts*sizeof(GLfloat), texcoords, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereIBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, num_indices*sizeof(GLuint), indices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+	delete[] vertices;
+    delete[] texcoords;
+    delete[] indices;
 }

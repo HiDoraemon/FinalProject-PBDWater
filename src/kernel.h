@@ -17,13 +17,13 @@
 #define SHARED 0
 #define PRESSURE 1
 
-#define SOLVER_ITERATIONS 2
-#define MAX_NEIGHBORS 10
+#define SOLVER_ITERATIONS 10
+#define MAX_NEIGHBORS 20
 #define REST_DENSITY 1000 // 1000 kg/m^3
-#define H 3.0f // smoothing radius
+#define H 1.5f // smoothing radius
 #define POW_H_9 (float)(H*H*H*H*H*H*H*H*H) // h^9
 #define POW_H_6 (float)(H*H*H*H*H*H) // h^6
-#define RELAXATION 0.001 // relaxation term in lambda calculation
+#define RELAXATION .1 // relaxation term in lambda calculation
 
 void checkCUDAError(const char *msg, int line);
 void cudaNBodyUpdateWrapper(float dt);

@@ -24,7 +24,7 @@ int numParticles;
 const float planetMass = 3e8;
 const __device__ float starMass = 5e10;
 
-const float scene_scale = 2e2; //size of the height map in simulation space
+const float scene_scale = 1; //size of the height map in simulation space
 
 glm::vec4* particles;
 glm::vec4* pred_particles;
@@ -69,22 +69,6 @@ glm::vec3 generateRandomNumberFromThread(float time, int index)
     thrust::uniform_real_distribution<float> u01(0,1);
 
     return glm::vec3((float) u01(rng), (float) u01(rng), (float) u01(rng));
-}
-
-//Generate randomized starting positions for the planets in the XY plane
-//Also initialized the masses
-__global__
-void generateRandomPosArray(int time, int N, glm::vec4 * arr, float scale, float mass)
-{
-    int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-    if(index < N)
-    {
-        glm::vec3 rand = scale*(generateRandomNumberFromThread(time, index)-0.5f);
-        arr[index].x = rand.x;
-        arr[index].y = rand.y;
-        arr[index].z = 0.0f;//rand.z;
-        arr[index].w = mass;
-    }
 }
 
 //Determine velocity from the distance from the center star. Not super physically accurate because 
@@ -186,9 +170,13 @@ void sendToVBO(int N, glm::vec4 * pos, float * vbo, int width, int height, float
 {
     int index = threadIdx.x + (blockIdx.x * blockDim.x);
 
-    float c_scale_w = -2.0f / s_scale;
-    float c_scale_h = -2.0f / s_scale;
-	float c_scale_z = 2.0f / s_scale;
+    //float c_scale_w = -2.0f / s_scale;
+    //float c_scale_h = -2.0f / s_scale;
+	//float c_scale_z = 2.0f / s_scale;
+
+	float c_scale_w = 1.0f;
+    float c_scale_h = 1.0f;
+	float c_scale_z = 1.0f;
 
     if(index<N)
     {
@@ -391,13 +379,13 @@ __global__
 void initializeParticles(int N, glm::vec4* particles, glm::vec3* velocities, glm::vec3* external_forces)
 {
     int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-	float gravity = -2.0f;
+	float gravity = -5.0f;
     if(index < N)
     {
-		glm::vec3 rand = 50.0f*(generateRandomNumberFromThread(1.0f, index)-0.5f);
+		glm::vec3 rand = 15.0f*(generateRandomNumberFromThread(1.0f, index)-0.5f);
 		particles[index].x = rand.x;
 		particles[index].y = rand.y;
-		particles[index].z = 50.0f + rand.z;
+		particles[index].z = 20.0+rand.z;
 		particles[index].w = 1.0f;
 
 		velocities[index] = glm::vec3(0.0f);
@@ -446,32 +434,44 @@ void updateVelocity(int N, glm::vec4* pred_particles, glm::vec4* particles, glm:
 }
 
 __global__
-void tempCollisionResponse(int N, glm::vec4* pred_particles, glm::vec3* velocities){
+void boxCollisionResponse(int N, glm::vec4* pred_particles, glm::vec3* velocities){
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
     if(index < N){
 		if(pred_particles[index].z < 0.0f){
 			pred_particles[index].z = 0.0001f;
-			velocities[index].z = -1.0f*velocities[index].z;
+			glm::vec3 normal = glm::vec3(0,0,1);
+			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
+			velocities[index].z = reflectedDir.z;
 		}
 		if(pred_particles[index].z > 100.0f){
 			pred_particles[index].z = 100.0f-0.0001f;
-			velocities[index].z = -1.0f*velocities[index].z;
+			glm::vec3 normal = glm::vec3(0,0,-1);
+			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
+			velocities[index].z = reflectedDir.z;
 		}
-		if(pred_particles[index].y < -30.0f){
-			pred_particles[index].y = -30.0f+0.0001f;
-			velocities[index].y = -1.0f*velocities[index].y;
+		if(pred_particles[index].y < -10.0f){
+			pred_particles[index].y = -10.0f+0.01f;
+			glm::vec3 normal = glm::vec3(0,1,0);
+			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
+			velocities[index].y = reflectedDir.y;
 		}
-		if(pred_particles[index].y > 30.0f){
-			pred_particles[index].y = 30.0f-0.0001f;
-			velocities[index].y = -1.0f*velocities[index].y;
+		if(pred_particles[index].y > 10.0f){
+			pred_particles[index].y = 10.0f-0.01f;
+			glm::vec3 normal = glm::vec3(0,-1,0);
+			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
+			velocities[index].y = reflectedDir.y;
 		}
-		if(pred_particles[index].x < -30.0f){
-			pred_particles[index].x = -30.0f+0.0001f;
-			velocities[index].x = -1.0f*velocities[index].x;
+		if(pred_particles[index].x < -10.0f){
+			pred_particles[index].x = -10.0f+0.01f;
+			glm::vec3 normal = glm::vec3(1,0,0);
+			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
+			velocities[index].x = reflectedDir.x;
 		}
-		if(pred_particles[index].x > 30.0f){
-			pred_particles[index].x = 30.0f-0.0001f;
-			velocities[index].x = -1.0f*velocities[index].x;
+		if(pred_particles[index].x > 10.0f){
+			pred_particles[index].x = 10.0f-0.01f;
+			glm::vec3 normal = glm::vec3(-1,0,0);
+			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
+			velocities[index].x = reflectedDir.x;
 		}
 	}
 }
@@ -522,7 +522,7 @@ void cudaNBodyUpdateWrapper(float dt)
 		calculateLambda<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, lambdas, numParticles);
 		calculateDeltaPi<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, lambdas, delta_pos, numParticles);
 		//PEFORM COLLISION DETECTION AND RESPONSE
-		tempCollisionResponse<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, velocities);
+		boxCollisionResponse<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, velocities);
 		updatePredictedPosition<<<fullBlocksPerGrid, blockSize>>>(numParticles,pred_particles, delta_pos);
 	}
 

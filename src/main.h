@@ -16,6 +16,8 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "kernel.h"
 #include "utilities.h"
+#include "ObjCore/objloader.h"
+#include "sceneStructs.h"
 
 #if CUDA_VERSION >= 5000
     #include <helper_cuda.h>
@@ -34,6 +36,8 @@ using namespace std;
 //-------------------------------
 
 GLuint positionLocation = 0;
+unsigned int colorLocation;
+unsigned int normalLocation;
 GLuint texcoordsLocation = 1;
 const char *attributeLocations[] = { "Position", "Texcoords" };
 GLuint pbo = (GLuint)NULL;
@@ -43,13 +47,20 @@ GLuint planeIBO = (GLuint)NULL;
 GLuint planetVBO = (GLuint)NULL;
 GLuint planetIBO = (GLuint)NULL;
 GLuint displayImage;
-GLuint program[2];
+GLuint program[3];
+
+GLuint meshVBO = (GLuint)NULL;
+GLuint meshTBO = (GLuint)NULL;
+GLuint meshIBO = (GLuint)NULL;
+GLuint sphereVBO = (GLuint)NULL;
+GLuint sphereTBO = (GLuint)NULL;
+GLuint sphereIBO = (GLuint)NULL;
 
 const unsigned int HEIGHT_FIELD = 0;
 const unsigned int PASS_THROUGH = 1;
 
-const int field_width  = 800;
-const int field_height = 800;
+const int field_width  = 10;
+const int field_height = 10;
 
 float fovy = 60.0f;
 float zNear = 0.10;
@@ -57,7 +68,7 @@ float zFar = 10000000.0f;
 
 glm::mat4 projection;
 glm::mat4 view;
-glm::vec3 cameraPosition(1.75,1.75,1.35);
+glm::vec3 cameraPosition(60.75,0,30.35);
 //-------------------------------
 //----------CUDA STUFF-----------
 //-------------------------------
@@ -91,6 +102,15 @@ void initCuda();
 void initTextures();
 void initVAO();
 void initShaders(GLuint * program);
+void drawMesh();
+void drawSphere();
+
+//-------------------------------
+//---------- OBJ STUFF ----------
+//-------------------------------
+
+obj* mesh;
+staticGeom geom;
 
 //-------------------------------
 //---------CLEANUP STUFF---------
