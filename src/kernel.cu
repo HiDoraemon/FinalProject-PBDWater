@@ -1,12 +1,12 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <cmath>
+#include <thrust/sort.h>
 #include "glm/glm.hpp"
 #include "utilities.h"
 #include "kernel.h"
-#include "intersections.h"
-
-using namespace glm;
+#include "gridStruct.h"
+#include "heap.h"
 
 #if PRESSURE == 1
 	#define DELTA_Q (float)(0.3*H)
@@ -22,7 +22,9 @@ using namespace glm;
 
 //GLOBALS
 dim3 threadsPerBlock(blockSize);
+dim3 gridSize;
 
+int totalGridSize;
 int numParticles;
 const __device__ float starMass = 5e10;
 
@@ -31,8 +33,11 @@ const float scene_scale = 1; //size of the height map in simulation space
 glm::vec4* particles;
 glm::vec4* pred_particles;
 glm::vec3* velocities;
+heap_entry* neighbors_heap;
 int* neighbors;
 int* num_neighbors;
+int* grid_idx;
+cell_entry* grid;
 glm::vec3* curl;
 float* lambdas;
 glm::vec3* delta_pos;
@@ -256,6 +261,113 @@ __device__ glm::vec3 calculateCiGradientAti(glm::vec4* particles, glm::vec3 p_i,
 /*************************************
  * Finding Neighboring Particles 
  *************************************/
+// Clears grid from previous neighbors
+__global__ void clearGrid(cell_entry* grid, int totalGridSize){
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+	if(index < totalGridSize){
+		cell_entry c = grid[index];
+		c.begin = -1;
+		c.end = -1;
+		grid[index] = c;
+	}
+}
+
+// Matches each particles the grid index for the cell in which the particle resides
+__global__ void findParticleGridIndex(glm::vec4* particles, int* grid_idx, int num_particles, dim3 gridSize){
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+	if(index < num_particles){
+		int x, y, z;
+		glm::vec4 p = particles[index];
+		x = int(floor(p.x));
+		y = int(floor(p.y));
+		z = int(floor(p.z));
+		grid_idx[index] = x + gridSize.x * y + (gridSize.x * gridSize.y * z);
+	}
+}
+
+// Matches the sorted index to each of the cells
+__global__ void matchParticleToCell(int* gridIdx, cell_entry* grid, int totalGridSize){
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+	if(index < totalGridSize - 1){
+		__shared__ int idxs[2];
+
+		idxs[0] = gridIdx[index];
+		idxs[1] = gridIdx[index + 1];
+		
+		if(idxs[0] != idxs[1]){
+			grid[idxs[0]].end = index;
+			grid[idxs[1]].begin = index + 1;
+		}
+	}
+}
+
+// Finds the nearest K neighbors within the smoothing kernel radius
+__global__ void findKNearestNeighbors(glm::vec4* particles, int* gridIdx, cell_entry* grid, heap_entry* neighbors, int* num_neighbors, int num_particles, dim3 gridSize){
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+	if(index < num_particles){
+		__shared__ heap_entry neighbor_heap[MAX_NEIGHBORS];
+
+		int heap_size = 0;
+		int x,y,z,idx;
+		float r;
+		glm::vec4 p_j, p = particles[index];
+
+		// Find particle index
+		x = int(floor(p.x));
+		y = int(floor(p.y));
+		z = int(floor(p.z));
+
+		// Examine all cells within radius
+		// NOTE: checks the cube that circumscribes the spherical smoothing kernel
+		for(int i = int(-H); i <= int(H); i++){
+			for(int j = int(-H); j <= int(H); j++){
+				for(int k = int(-H); k <= int(H); k++){
+					if(i == z && j == y && k == x){
+						continue; // do not add itself to neighbor set
+					}
+
+					idx = k + gridSize.x * j + (gridSize.x * gridSize.y * i);
+					p_j = particles[idx];
+					r = glm::length(p - p_j);
+					if(r < heapGetMax(neighbor_heap)){ 
+						if(heap_size == MAX_NEIGHBORS){
+							heapRemoveMax(neighbor_heap, heap_size);
+						}
+						heapInsert(neighbor_heap, r, idx, heap_size, MAX_NEIGHBORS);
+					}
+				}
+			}
+		}
+
+		// Copy into neighbors
+		for(int i = 0; i < heap_size; i++){
+			neighbors[index * MAX_NEIGHBORS + i] = neighbor_heap[i];
+		}
+		num_neighbors[index] = heap_size;
+	}
+}
+
+// Wrapper to find neighbors using hash grid
+void findNeighbors(glm::vec4* particles, int* grid_idx, cell_entry* grid, heap_entry* neighbors, int num_particles){
+	dim3 fullBlocksPerGrid((int)ceil(float(totalGridSize) / float(blockSize)));
+	dim3 fullBlocksPerGridParticles((int)ceil(float(numParticles)/float(blockSize)));
+
+	// Clear Grid
+	clearGrid<<<fullBlocksPerGrid, blockSize>>>(grid, totalGridSize);
+
+	// Match particle to index
+	findParticleGridIndex<<<fullBlocksPerGridParticles, blockSize>>>(particles, grid_idx, num_particles, gridSize);
+
+	// Sort by key
+	thrust::sort_by_key(grid_idx, grid_idx + totalGridSize, particles);
+
+	// Match sorted particle index
+	matchParticleToCell<<<fullBlocksPerGrid, blockSize>>>(grid_idx, grid, totalGridSize);
+
+	// Find K nearest neighbors
+	findKNearestNeighbors<<<fullBlocksPerGridParticles, blockSize>>>(particles, grid_idx, grid, neighbors, num_neighbors, num_particles, totalGridSize);
+}
+
 __global__ void findNeighbors(glm::vec4* pred_particles, int* neighbors, int* num_neighbors, int num_particles){
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
 	if(index < num_particles){
