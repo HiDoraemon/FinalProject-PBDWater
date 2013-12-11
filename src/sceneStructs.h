@@ -24,7 +24,7 @@ struct staticGeom {
 	glm::vec3 translation;
 	glm::vec3 rotation;
 	glm::vec3 scale;
-	glm::mat4 transform;
+	cudaMat4 transform;
 	cudaMat4 inverseTransform;
 };
 

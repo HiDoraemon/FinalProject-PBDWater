@@ -15,12 +15,8 @@ using namespace glm;
 
 int main(int argc, char** argv)
 {
-	//load sphere
-	geom.type = SPHERE;
-	geom.rotation = vec3(0,0,0);
-	geom.translation = vec3(0,2,0);
-	geom.scale = vec3(2,2,2);
-	geom.transform = utilityCore::buildTransformationMatrix(geom.translation, geom.rotation, geom.scale);
+	//load geometry
+	initGeometry();
 
 	//load mesh
 	bool loadedScene = false;
@@ -79,6 +75,28 @@ int main(int argc, char** argv)
     return 0;
 }
 
+void initGeometry(){
+	staticGeom geom;
+	geom.type = SPHERE;
+	geom.rotation = vec3(0,0,0);
+	geom.translation = vec3(0,0,-4);
+	geom.scale = vec3(10,10,10);
+	mat4 transform = utilityCore::buildTransformationMatrix(geom.translation, geom.rotation, geom.scale);
+	geom.transform = utilityCore::glmMat4ToCudaMat4(transform);
+	geom.inverseTransform = utilityCore::glmMat4ToCudaMat4(glm::inverse(transform));
+	geoms.push_back(geom);
+	
+	/*staticGeom geom1;
+	geom1.type = SPHERE;
+	geom1.rotation = vec3(0,0,0);
+	geom1.translation = vec3(5,-5,0);
+	geom1.scale = vec3(6,6,6);
+	transform = utilityCore::buildTransformationMatrix(geom1.translation, geom1.rotation, geom1.scale);
+	geom1.transform = utilityCore::glmMat4ToCudaMat4(transform);
+	geom1.inverseTransform = utilityCore::glmMat4ToCudaMat4(glm::inverse(transform));
+	geoms.push_back(geom1);*/
+}
+
 //-------------------------------
 //---------RUNTIME STUFF---------
 //-------------------------------
@@ -93,8 +111,14 @@ void runCuda()
     cudaGLMapBufferObject((void**)&dptr, pbo);
     cudaGLMapBufferObject((void**)&dptrvert, planetVBO);
 
+	//pack geoms
+	staticGeom* gs = new staticGeom[geoms.size()];
+	for (int i = 0; i < geoms.size(); i++){
+		gs[i] = geoms[i];
+	}
+
     // execute the kernel
-    cudaNBodyUpdateWrapper(DT);
+    cudaNBodyUpdateWrapper(DT, gs, geoms.size());
 #if VISUALIZE == 1
     cudaUpdatePBO(dptr, field_width, field_height);
     cudaUpdateVBO(dptrvert, field_width, field_height);
@@ -409,7 +433,7 @@ void initShaders(GLuint * program)
     if ((location = glGetUniformLocation(program[2], "u_projMatrix")) != -1)
     {
 		 
-		glm::mat4 result = projection*geom.transform;
+		glm::mat4 result = projection*utilityCore::cudaMat4ToGlmMat4(geoms[0].transform);
         glUniformMatrix4fv(location, 1, GL_FALSE, &result[0][0]);
     }
     if ((location = glGetUniformLocation(program[2], "u_height")) != -1)

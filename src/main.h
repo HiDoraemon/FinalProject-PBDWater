@@ -106,11 +106,13 @@ void drawMesh();
 void drawSphere();
 
 //-------------------------------
-//---------- OBJ STUFF ----------
+//---------- GEOM STUFF ---------
 //-------------------------------
 
 obj* mesh;
-staticGeom geom;
+vector<staticGeom> geoms;
+
+void initGeometry();
 
 //-------------------------------
 //---------CLEANUP STUFF---------

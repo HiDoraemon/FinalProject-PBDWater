@@ -4,6 +4,9 @@
 #include "glm/glm.hpp"
 #include "utilities.h"
 #include "kernel.h"
+#include "intersections.h"
+
+using namespace glm;
 
 #if PRESSURE == 1
 	#define DELTA_Q (float)(0.3*H)
@@ -21,7 +24,6 @@
 dim3 threadsPerBlock(blockSize);
 
 int numParticles;
-const float planetMass = 3e8;
 const __device__ float starMass = 5e10;
 
 const float scene_scale = 1; //size of the height map in simulation space
@@ -443,35 +445,53 @@ void boxCollisionResponse(int N, glm::vec4* pred_particles, glm::vec3* velocitie
 			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
 			velocities[index].z = reflectedDir.z;
 		}
-		if(pred_particles[index].z > 100.0f){
+		if(pred_particles[index].z > BOX_Z){
 			pred_particles[index].z = 100.0f-0.0001f;
 			glm::vec3 normal = glm::vec3(0,0,-1);
 			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
 			velocities[index].z = reflectedDir.z;
 		}
-		if(pred_particles[index].y < -10.0f){
+		if(pred_particles[index].y < -BOX_Y){
 			pred_particles[index].y = -10.0f+0.01f;
 			glm::vec3 normal = glm::vec3(0,1,0);
 			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
 			velocities[index].y = reflectedDir.y;
 		}
-		if(pred_particles[index].y > 10.0f){
+		if(pred_particles[index].y > BOX_Y){
 			pred_particles[index].y = 10.0f-0.01f;
 			glm::vec3 normal = glm::vec3(0,-1,0);
 			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
 			velocities[index].y = reflectedDir.y;
 		}
-		if(pred_particles[index].x < -10.0f){
+		if(pred_particles[index].x < -BOX_X){
 			pred_particles[index].x = -10.0f+0.01f;
 			glm::vec3 normal = glm::vec3(1,0,0);
 			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
 			velocities[index].x = reflectedDir.x;
 		}
-		if(pred_particles[index].x > 10.0f){
+		if(pred_particles[index].x > BOX_X){
 			pred_particles[index].x = 10.0f-0.01f;
 			glm::vec3 normal = glm::vec3(-1,0,0);
 			glm::vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
 			velocities[index].x = reflectedDir.x;
+		}
+	}
+}
+
+__global__
+void geomCollisionResponse(int N, glm::vec4* pred_particles, glm::vec3* velocities, staticGeom* geoms, int numGeoms){
+	int index = threadIdx.x + (blockIdx.x * blockDim.x);
+    if(index < N){
+		for (int i = 0; i < numGeoms; i++){
+			vec3 normal;
+			vec3 intersectionPoint;
+			if (geoms[i].type == SPHERE){
+				if (sphereIntersectionTest(geoms[i], vec3(pred_particles[index]), intersectionPoint, normal)){
+					pred_particles[index] = vec4(intersectionPoint,1.0);
+					vec3 reflectedDir = velocities[index] - glm::vec3(2.0f*(normal*(glm::dot(velocities[index],normal))));
+					velocities[index] = reflectedDir;
+				}
+			}
 		}
 	}
 }
@@ -511,18 +531,25 @@ void initCuda(int N)
     cudaThreadSynchronize();
 }
 
-void cudaNBodyUpdateWrapper(float dt)
+void cudaNBodyUpdateWrapper(float dt, staticGeom* geoms, int numGeoms)
 {
     dim3 fullBlocksPerGrid((int)ceil(float(numParticles)/float(blockSize)));
     applyExternalForces<<<fullBlocksPerGrid, blockSize>>>(numParticles, dt, pred_particles, particles, velocities, external_forces);
     checkCUDAErrorWithLine("applyExternalForces failed!");
 	findNeighbors<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, numParticles);
     checkCUDAErrorWithLine("findNeighbors failed!");
+
+	//malloc geometry
+	staticGeom* cudageoms = NULL;
+	cudaMalloc((void**)&cudageoms, numGeoms*sizeof(staticGeom));
+	cudaMemcpy( cudageoms, geoms, numGeoms*sizeof(staticGeom), cudaMemcpyHostToDevice);
+
 	for(int i = 0; i < SOLVER_ITERATIONS; i++){
 		calculateLambda<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, lambdas, numParticles);
 		calculateDeltaPi<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, lambdas, delta_pos, numParticles);
 		//PEFORM COLLISION DETECTION AND RESPONSE
 		boxCollisionResponse<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, velocities);
+		geomCollisionResponse<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, velocities, cudageoms, numGeoms);
 		updatePredictedPosition<<<fullBlocksPerGrid, blockSize>>>(numParticles,pred_particles, delta_pos);
 	}
 

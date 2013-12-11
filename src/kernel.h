@@ -5,6 +5,7 @@
 #include <thrust/random.h>
 #include <cuda.h>
 #include <cmath>
+#include "sceneStructs.h"
 
 #if CUDA_VERSION >= 5000
     #include <helper_math.h>
@@ -17,6 +18,10 @@
 #define SHARED 0
 #define PRESSURE 1
 
+#define BOX_X 10
+#define BOX_Y 10
+#define BOX_Z 40
+
 #define SOLVER_ITERATIONS 10
 #define MAX_NEIGHBORS 20
 #define REST_DENSITY 1000 // 1000 kg/m^3
@@ -26,7 +31,7 @@
 #define RELAXATION .1 // relaxation term in lambda calculation
 
 void checkCUDAError(const char *msg, int line);
-void cudaNBodyUpdateWrapper(float dt);
+void cudaNBodyUpdateWrapper(float dt, staticGeom* geoms, int numGeoms);
 void initCuda(int N);
 void cudaUpdatePBO(float4 * pbodptr, int width, int height);
 void cudaUpdateVBO(float * vbodptr, int width, int height);
