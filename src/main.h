@@ -69,6 +69,8 @@ float zFar = 10000000.0f;
 glm::mat4 projection;
 glm::mat4 view;
 glm::vec3 cameraPosition(60.75,0,30.35);
+glm::vec3 center(0,0,0);
+
 //-------------------------------
 //----------CUDA STUFF-----------
 //-------------------------------
@@ -122,5 +124,19 @@ void cleanupCuda();
 void deletePBO(GLuint* pbo);
 void deleteTexture(GLuint* tex);
 void shut_down(int return_code);
+
+//camera stuff
+float theta = 0; //r and l
+float phi = 30; //up and down
+float r = glm::length(cameraPosition-center);
+float oldx;
+float oldy;
+
+bool Lpressed = false;
+bool Rpressed = false;
+
+void mouse(int button, int state, int x, int y);
+void drag(int x, int y);
+void update(int x, int y);
 
 #endif

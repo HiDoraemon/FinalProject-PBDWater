@@ -53,11 +53,6 @@ int main(int argc, char** argv)
     initCuda(2*128);
 #endif
 
-    projection = glm::perspective(fovy, float(width)/float(height), zNear, zFar);
-    view = glm::lookAt(cameraPosition-glm::vec3(0,0,10), glm::vec3(0), glm::vec3(0,0,1));
-
-    projection = projection * view;
-
     GLuint passthroughProgram;
     initShaders(program);
 
@@ -69,6 +64,8 @@ int main(int argc, char** argv)
 
     glutDisplayFunc(display);
     glutKeyboardFunc(keyboard);
+	glutMouseFunc(mouse);
+    glutMotionFunc(update);
 
     glutMainLoop();
 
@@ -250,6 +247,67 @@ void keyboard(unsigned char key, int x, int y)
     }
 }
 
+void mouse(int button, int state, int x, int y){
+	  switch(button){
+		  case GLUT_LEFT_BUTTON:		//rotate
+			  if(state == GLUT_DOWN){
+				  Lpressed = true;
+				  oldx = x;
+				  oldy = y;
+			  }else if (state == GLUT_UP){
+				  Lpressed = false;
+			  }
+			  break;
+		  case GLUT_RIGHT_BUTTON:		//zoom
+			  if(state == GLUT_DOWN){
+				  Rpressed = true;
+				  oldx = x;
+			  }else if (state == GLUT_UP){
+				  Rpressed = false;
+			  }
+			  break;
+	  }
+  }
+
+  void update(int x, int y){
+	  if (Lpressed){		//rotate
+			float difx = x-oldx;
+			float dify = y-oldy;
+			phi += dify*.5f;
+			theta -= difx*.5f;
+
+			if (phi < -90){
+				phi = -89.999;
+			}else if (phi > 90){
+				phi = 89.999;
+			}
+
+			float radPhi = 3.14159265359/180*phi;
+			float radTheta = 3.14159265359/180*theta;
+
+			float eyex = r*cos(radTheta)*cos(radPhi);
+			float eyey = r*sin(radTheta)*cos(radPhi);
+			float eyez = r*sin(radPhi);
+			cameraPosition = glm::vec3(eyex,eyey,eyez);
+			oldx = x;
+			oldy = y;
+	  }else if (Rpressed){	//zoom
+			float difx = x-oldx;
+			r -= 0.1*difx;
+
+			float radPhi = 3.14159265359/180*phi;
+			float radTheta = 3.14159265359/180*theta;
+
+			float eyex = r*cos(radTheta)*cos(radPhi);
+			float eyey = r*sin(radTheta)*cos(radPhi);
+			float eyez = r*sin(radPhi);
+			cameraPosition = glm::vec3(eyex,eyey,eyez);
+			oldx = x;
+			oldy = y;
+	  }
+	  initShaders(program);
+  }
+
 
 //-------------------------------
 //----------SETUP STUFF----------
@@ -395,6 +453,11 @@ void initVAO(void)
 
 void initShaders(GLuint * program)
 {
+	projection = glm::perspective(fovy, float(width)/float(height), zNear, zFar);
+    view = glm::lookAt(cameraPosition-center, glm::vec3(0), glm::vec3(0,0,1));
+
+    projection = projection * view;
+
     GLint location;
     program[0] = glslUtility::createProgram("shaders/heightVS.glsl", "shaders/heightFS.glsl", attributeLocations, 2);
     glUseProgram(program[0]);
