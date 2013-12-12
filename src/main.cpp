@@ -117,6 +117,8 @@ void runCuda()
 		gs[i] = geoms[i];
 	}
 
+	//std::getchar();
+
     // execute the kernel
     cudaPBFUpdateWrapper(DT, gs, geoms.size());
 #if VISUALIZE == 1

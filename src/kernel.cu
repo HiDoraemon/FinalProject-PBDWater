@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <cmath>
+#include <thrust/device_ptr.h>
+#include <thrust/device_vector.h>
 #include <thrust/sort.h>
 #include "glm/glm.hpp"
 #include "utilities.h"
@@ -17,9 +19,9 @@
 
 //GLOBALS
 dim3 threadsPerBlock(blockSize);
-dim3 gridSize;
+dim3 gridSize = dim3((2 * BOX_X), (2 * BOX_Y), BOX_Z);
 
-int totalGridSize;
+int totalGridSize = (2 * BOX_X) * (2 * BOX_Y) * BOX_Z;
 int numParticles;
 const __device__ float starMass = 5e10;
 
@@ -28,11 +30,10 @@ const float scene_scale = 1; //size of the height map in simulation space
 glm::vec4* particles;
 glm::vec4* pred_particles;
 glm::vec3* velocities;
-heap_entry* neighbors_heap;
 int* neighbors;
 int* num_neighbors;
 int* grid_idx;
-cell_entry* grid;
+int* grid;
 glm::vec3* curl;
 float* lambdas;
 glm::vec3* delta_pos;
@@ -103,7 +104,7 @@ __device__ float wPoly6Kernel(glm::vec3 p_i, glm::vec3 p_j){
 	float r = glm::length(p_i - p_j);
 	float hr_term = (H * H - r * r);
 	float div = 64.0 * PI * POW_H_9;
-	if(div < EPSILON) return 0;
+	//if(div < EPSILON) return 0;
 	return 315.0f / div * hr_term * hr_term * hr_term;
 }
 
@@ -112,7 +113,7 @@ __device__ glm::vec3 wGradientSpikyKernel(glm::vec3 p_i, glm::vec3 p_j){
 	float hr_term = H - glm::length(r);
 	float gradient_magnitude = 45.0f / (PI * POW_H_6) * hr_term * hr_term;
 	float div = (glm::length(r) + 0.001f);
-	if(div < EPSILON) return vec3(0.0f);
+	//if(div < EPSILON) return vec3(0.0f);
 	return gradient_magnitude * 1.0f / div * r;
 }
 
@@ -128,7 +129,7 @@ __device__ float calculateRo(glm::vec4* particles, glm::vec3 p, int* p_neighbors
 
 __device__ glm::vec3 calculateCiGradient(glm::vec3 p_i, glm::vec3 p_j){
 	glm::vec3 Ci = -1.0f / float(REST_DENSITY) * wGradientSpikyKernel(p_i, p_j);
-	if(glm::length(Ci) < EPSILON) return glm::vec3(0.0f);
+	//if(glm::length(Ci) < EPSILON) return glm::vec3(0.0f);
 	return Ci;
 }
 
@@ -138,7 +139,7 @@ __device__ glm::vec3 calculateCiGradientAti(glm::vec4* particles, glm::vec3 p_i,
 		accum += wGradientSpikyKernel(p_i, glm::vec3(particles[neighbors[i + index * MAX_NEIGHBORS]]));
 	}
 	glm::vec3 Ci = 1.0f / float(REST_DENSITY) * accum;
-	if(glm::length(Ci) < EPSILON) return glm::vec3(0.0f);
+	//if(glm::length(Ci) < EPSILON) return glm::vec3(0.0f);
 	return Ci;
 }
 
@@ -146,13 +147,10 @@ __device__ glm::vec3 calculateCiGradientAti(glm::vec4* particles, glm::vec3 p_i,
  * Finding Neighboring Particles 
  *************************************/
 // Clears grid from previous neighbors
-__global__ void clearGrid(cell_entry* grid, int totalGridSize){
+__global__ void clearGrid(int* grid, int totalGridSize){
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
 	if(index < totalGridSize){
-		cell_entry c = grid[index];
-		c.begin = -1;
-		c.end = -1;
-		grid[index] = c;
+		grid[index] = -1;
 	}
 }
 
@@ -162,94 +160,124 @@ __global__ void findParticleGridIndex(glm::vec4* particles, int* grid_idx, int n
 	if(index < num_particles){
 		int x, y, z;
 		glm::vec4 p = particles[index];
-		x = int(floor(p.x));
-		y = int(floor(p.y));
+		x = int(floor(p.x)) + (int)(gridSize.x / 2);
+		y = int(floor(p.y)) + (int)(gridSize.y / 2);
 		z = int(floor(p.z));
-		grid_idx[index] = x + gridSize.x * y + (gridSize.x * gridSize.y * z);
+		grid_idx[index] = x + (gridSize.x * y) + (gridSize.x * gridSize.y * z);
 	}
 }
 
 // Matches the sorted index to each of the cells
-__global__ void matchParticleToCell(int* gridIdx, cell_entry* grid, int totalGridSize){
+__global__ void matchParticleToCell(int* gridIdx, int* grid, int num_particles){
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
-	if(index < totalGridSize - 1){
-		__shared__ int idxs[2];
-
-		idxs[0] = gridIdx[index];
-		idxs[1] = gridIdx[index + 1];
-		
-		if(idxs[0] != idxs[1]){
-			grid[idxs[0]].end = index;
-			grid[idxs[1]].begin = index + 1;
+	if(index < num_particles){
+		if(index == 0){
+			grid[gridIdx[index]] = index;
+		}else if(gridIdx[index] != gridIdx[index - 1]){
+			grid[gridIdx[index]] = index;
 		}
 	}
 }
 
 // Finds the nearest K neighbors within the smoothing kernel radius
-__global__ void findKNearestNeighbors(glm::vec4* particles, int* gridIdx, cell_entry* grid, heap_entry* neighbors, int* num_neighbors, int num_particles, dim3 gridSize){
+__global__ void findKNearestNeighbors(glm::vec4* particles, int* gridIdx, int* grid, int* neighbors, int* num_neighbors, int num_particles, dim3 gridSize){
 	int index = threadIdx.x + (blockIdx.x * blockDim.x);
 	if(index < num_particles){
-		__shared__ heap_entry neighbor_heap[MAX_NEIGHBORS];
-
 		int heap_size = 0;
 		int x,y,z,idx;
 		float r;
 		glm::vec4 p_j, p = particles[index];
 
 		// Find particle index
-		x = int(floor(p.x));
-		y = int(floor(p.y));
+		x = int(floor(p.x)) + (int)(gridSize.x / 2);
+		y = int(floor(p.y)) + (int)(gridSize.y / 2);
 		z = int(floor(p.z));
+
+		float max;
+		int m, max_index, begin, cell_position;
 
 		// Examine all cells within radius
 		// NOTE: checks the cube that circumscribes the spherical smoothing kernel
-		for(int i = int(-H); i <= int(H); i++){
-			for(int j = int(-H); j <= int(H); j++){
-				for(int k = int(-H); k <= int(H); k++){
-					if(i == z && j == y && k == x){
-						continue; // do not add itself to neighbor set
+		for(int i = int(floor(-H + z)); i <= int(floor(H + z)); i++){
+			for(int j = int(floor(-H + y)); j <= int(floor(H + y)); j++){
+				for(int k = int(floor(-H + x)); k <= int(floor(H + x)); k++){
+					idx = k + (gridSize.x * j) + (gridSize.x * gridSize.y * i);
+
+					if(idx >= gridSize.x * gridSize.y * gridSize.z || idx < 0){
+						continue;
 					}
 
-					idx = k + gridSize.x * j + (gridSize.x * gridSize.y * i);
-					p_j = particles[idx];
-					r = glm::length(p - p_j);
-					if(r < heapGetMax(neighbor_heap)){ 
-						if(heap_size == MAX_NEIGHBORS){
-							heapRemoveMax(neighbor_heap, heap_size);
+					begin = grid[idx];
+
+					if(begin < 0) continue;
+
+					cell_position = begin;
+					while(cell_position < num_particles && gridIdx[begin] == gridIdx[cell_position]){
+						if(cell_position == index){
+							++cell_position;
+							continue;
 						}
-						heapInsert(neighbor_heap, r, idx, heap_size, MAX_NEIGHBORS);
+						p_j = particles[cell_position];
+						r = glm::length(p - p_j);
+
+						if(heap_size < MAX_NEIGHBORS){
+							if(r < H && r > EPSILON){
+								neighbors[index * MAX_NEIGHBORS + heap_size] = cell_position;
+								++heap_size;
+							}
+						}else{
+							max = glm::length(p - particles[neighbors[index * MAX_NEIGHBORS]]);
+							max_index = 0;
+							for(m = 1; m < heap_size; m++){
+								float d = glm::length(p - particles[neighbors[index * MAX_NEIGHBORS + m]]); 
+								if(d > max){
+									max = d;
+									max_index = m;
+								}
+							}
+
+							if(r < max && r < H && r > EPSILON){
+								neighbors[index * MAX_NEIGHBORS + max_index] = cell_position;
+							}
+						}
+
+						++cell_position;
 					}
 				}
 			}
-		}
-
-		// Copy into neighbors
-		for(int i = 0; i < heap_size; i++){
-			neighbors[index * MAX_NEIGHBORS + i] = neighbor_heap[i];
 		}
 		num_neighbors[index] = heap_size;
 	}
 }
 
 // Wrapper to find neighbors using hash grid
-void findNeighbors(glm::vec4* particles, int* grid_idx, cell_entry* grid, heap_entry* neighbors, int num_particles){
+void findNeighbors(glm::vec4* particles, int* grid_idx, int* grid, int* neighbors, int num_particles){
 	dim3 fullBlocksPerGrid((int)ceil(float(totalGridSize) / float(blockSize)));
 	dim3 fullBlocksPerGridParticles((int)ceil(float(numParticles)/float(blockSize)));
 
 	// Clear Grid
 	clearGrid<<<fullBlocksPerGrid, blockSize>>>(grid, totalGridSize);
+	checkCUDAErrorWithLine("clearGrid failed!");
 
 	// Match particle to index
 	findParticleGridIndex<<<fullBlocksPerGridParticles, blockSize>>>(particles, grid_idx, num_particles, gridSize);
+	checkCUDAErrorWithLine("findParticleGridIndex failed!");
+
+	// Cast to device pointers
+	thrust::device_ptr<int> t_grid_idx = thrust::device_pointer_cast(grid_idx);
+	thrust::device_ptr<glm::vec4> t_particles = thrust::device_pointer_cast(particles);
 
 	// Sort by key
-	thrust::sort_by_key(grid_idx, grid_idx + totalGridSize, particles);
+	thrust::sort_by_key(t_grid_idx, t_grid_idx + numParticles, t_particles);
+	checkCUDAErrorWithLine("thrust failed!");
 
 	// Match sorted particle index
-	matchParticleToCell<<<fullBlocksPerGrid, blockSize>>>(grid_idx, grid, totalGridSize);
+	matchParticleToCell<<<fullBlocksPerGridParticles, blockSize>>>(grid_idx, grid, numParticles);
+	checkCUDAErrorWithLine("matchParticletoCell failed!");
 
 	// Find K nearest neighbors
 	findKNearestNeighbors<<<fullBlocksPerGridParticles, blockSize>>>(particles, grid_idx, grid, neighbors, num_neighbors, num_particles, totalGridSize);
+	checkCUDAErrorWithLine("findKNearestNeighbors failed!");
 }
 
 __global__ void findNeighbors(glm::vec4* pred_particles, int* neighbors, int* num_neighbors, int num_particles){
@@ -298,8 +326,8 @@ __global__ void calculateLambda(glm::vec4* particles, int* neighbors, int* num_n
 		sum_gradients += (C_i_gradient * C_i_gradient);
 
 		float sumCi = sum_gradients + RELAXATION;
-		if(sumCi < EPSILON) lambdas[index] = -0.0f;
-		else lambdas[index] = -1.0f * (C_i / sumCi); 
+		//if(sumCi < EPSILON) lambdas[index] = -0.0f;
+		lambdas[index] = -1.0f * (C_i / sumCi); 
 	}
 }
 
@@ -328,8 +356,8 @@ __global__ void calculateDeltaPi(glm::vec4* particles, int* neighbors, int* num_
 			delta += (l + lambdas[p_j_idx] + s_corr) * wGradientSpikyKernel(p, glm::vec3(particles[p_j_idx]));
 		}
 		float inv_p0 = 1.0f / REST_DENSITY;
-		if(inv_p0 < EPSILON) delta_pos[index] = glm::vec3(0.0f);
-		else delta_pos[index] = 1.0f / REST_DENSITY * delta;
+		//if(inv_p0 < EPSILON) delta_pos[index] = glm::vec3(0.0f);
+		delta_pos[index] = 1.0f / REST_DENSITY * delta;
 	}
 }
 
@@ -515,7 +543,7 @@ void initCuda(int N)
     cudaMalloc((void**)&velocities, N*sizeof(glm::vec3));
     checkCUDAErrorWithLine("velocities cudamalloc failed!");
 
-	cudaMalloc((void**)&neighbors, MAX_NEIGHBORS*N*sizeof(int));
+	cudaMalloc((void**)&neighbors, MAX_NEIGHBORS*N*sizeof(heap_entry));
 	cudaMalloc((void**)&num_neighbors, N*sizeof(int));
     checkCUDAErrorWithLine("num_neighbors cudamalloc failed!");
 
@@ -528,6 +556,11 @@ void initCuda(int N)
 	cudaMalloc((void**)&external_forces, N*sizeof(glm::vec3));
     checkCUDAErrorWithLine("external_forces cudamalloc failed!");
 
+	cudaMalloc((void**)&grid_idx, N*sizeof(int));
+	checkCUDAErrorWithLine("grid idx cudamalloc failed!");
+	cudaMalloc((void**)&grid, totalGridSize*sizeof(cell_entry));
+	checkCUDAErrorWithLine("grid cudamalloc failed!");
+
     initializeParticles<<<fullBlocksPerGrid, blockSize>>>(N, particles, velocities, external_forces);
     checkCUDAErrorWithLine("Kernel failed!");
     cudaThreadSynchronize();
@@ -538,6 +571,7 @@ void cudaPBFUpdateWrapper(float dt, staticGeom* geoms, int numGeoms)
     dim3 fullBlocksPerGrid((int)ceil(float(numParticles)/float(blockSize)));
     applyExternalForces<<<fullBlocksPerGrid, blockSize>>>(numParticles, dt, pred_particles, particles, velocities, external_forces);
     checkCUDAErrorWithLine("applyExternalForces failed!");
+	//findNeighbors(pred_particles, grid_idx, grid, neighbors, numParticles);
 	findNeighbors<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, numParticles);
     checkCUDAErrorWithLine("findNeighbors failed!");
 
@@ -557,8 +591,8 @@ void cudaPBFUpdateWrapper(float dt, staticGeom* geoms, int numGeoms)
 
 
 	updateVelocity<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, particles, velocities, dt);
-	calculateCurl<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, velocities, curl, numParticles);
-	applyVorticity<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, curl, external_forces, numParticles);
+	//calculateCurl<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, velocities, curl, numParticles);
+	//applyVorticity<<<fullBlocksPerGrid, blockSize>>>(pred_particles, neighbors, num_neighbors, curl, external_forces, numParticles);
 	updatePosition<<<fullBlocksPerGrid, blockSize>>>(numParticles, pred_particles, particles);
     checkCUDAErrorWithLine("updatePosition failed!");
     cudaThreadSynchronize();

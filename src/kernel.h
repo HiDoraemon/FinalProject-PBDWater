@@ -16,16 +16,16 @@
 #define blockSize 128
 #define checkCUDAErrorWithLine(msg) checkCUDAError(msg, __LINE__)
 #define SHARED 0
-#define PRESSURE 1
+#define PRESSURE 0
 #define HEAP 0
 
 #define BOX_X 10
 #define BOX_Y 10
 #define BOX_Z 40
 
-#define SOLVER_ITERATIONS 5
+#define SOLVER_ITERATIONS 3
 #define MAX_NEIGHBORS 20
-#define REST_DENSITY 100000 // 1000 kg/m^3
+#define REST_DENSITY 100000.0f // 1000 kg/m^3
 #define H 1.0f // smoothing radius
 #define POW_H_9 (float)(H*H*H*H*H*H*H*H*H) // h^9
 #define POW_H_6 (float)(H*H*H*H*H*H) // h^6
