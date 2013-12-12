@@ -12,7 +12,7 @@ void main()
 
     vec2 coord = 2.01 * (TexCoord - vec2(0.5));
     float r = length(coord);
-    if (r >= .25) { discard; }
+    if (r >= 1.0) { discard; }
 
     float dist = length(WorldCoord);
     vec3 N = Right*-coord.x + Up*coord.y + ToCam*sqrt(1-r*r);

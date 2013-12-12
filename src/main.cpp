@@ -6,8 +6,8 @@
 
 using namespace glm;
 
-#define N_FOR_VIS 5000
-#define DT 0.05
+#define N_FOR_VIS 10000
+#define DT 0.01
 #define VISUALIZE 1
 //-------------------------------
 //-------------MAIN--------------
@@ -19,25 +19,25 @@ int main(int argc, char** argv)
 	initGeometry();
 
 	//load mesh
-	bool loadedScene = false;
-	for(int i=1; i<argc; i++){
-		string header; string data;
-		istringstream liness(argv[i]);
-		getline(liness, header, '='); getline(liness, data, '=');
-		if(strcmp(header.c_str(), "mesh")==0){
-		  //renderScene = new scene(data);
-		  mesh = new obj();
-		  objLoader* loader = new objLoader(data, mesh);
-		  mesh->buildVBOs();
-		  delete loader;
-		  loadedScene = true;
-		}
-	}
+	//bool loadedScene = false;
+	//for(int i=1; i<argc; i++){
+	//	string header; string data;
+	//	istringstream liness(argv[i]);
+	//	getline(liness, header, '='); getline(liness, data, '=');
+	//	if(strcmp(header.c_str(), "mesh")==0){
+	//	  //renderScene = new scene(data);
+	//	  mesh = new obj();
+	//	  objLoader* loader = new objLoader(data, mesh);
+	//	  mesh->buildVBOs();
+	//	  delete loader;
+	//	  loadedScene = true;
+	//	}
+	//}
 
-	  if(!loadedScene){
-		cout << "Usage: mesh=[obj file]" << endl;
-		return 0;
-	  }
+	 // if(!loadedScene){
+		//cout << "Usage: mesh=[obj file]" << endl;
+		//return 0;
+	 // }
 
     // Launch CUDA/GL
 
@@ -118,9 +118,8 @@ void runCuda()
 	}
 
     // execute the kernel
-    cudaNBodyUpdateWrapper(DT, gs, geoms.size());
+    cudaPBFUpdateWrapper(DT, gs, geoms.size());
 #if VISUALIZE == 1
-    cudaUpdatePBO(dptr, field_width, field_height);
     cudaUpdateVBO(dptrvert, field_width, field_height);
 #endif
     // unmap buffer object

@@ -17,23 +17,23 @@
 #define checkCUDAErrorWithLine(msg) checkCUDAError(msg, __LINE__)
 #define SHARED 0
 #define PRESSURE 1
+#define HEAP 0
 
 #define BOX_X 10
 #define BOX_Y 10
 #define BOX_Z 40
 
-#define SOLVER_ITERATIONS 10
+#define SOLVER_ITERATIONS 5
 #define MAX_NEIGHBORS 20
-#define REST_DENSITY 1000 // 1000 kg/m^3
-#define H 1.5f // smoothing radius
+#define REST_DENSITY 100000 // 1000 kg/m^3
+#define H 1.0f // smoothing radius
 #define POW_H_9 (float)(H*H*H*H*H*H*H*H*H) // h^9
 #define POW_H_6 (float)(H*H*H*H*H*H) // h^6
-#define RELAXATION .1 // relaxation term in lambda calculation
+#define RELAXATION .002 // relaxation term in lambda calculation
 
 void checkCUDAError(const char *msg, int line);
-void cudaNBodyUpdateWrapper(float dt, staticGeom* geoms, int numGeoms);
+void cudaPBFUpdateWrapper(float dt, staticGeom* geoms, int numGeoms);
 void initCuda(int N);
-void cudaUpdatePBO(float4 * pbodptr, int width, int height);
 void cudaUpdateVBO(float * vbodptr, int width, int height);
 void freeCuda();
 #endif

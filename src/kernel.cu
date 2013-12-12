@@ -7,17 +7,12 @@
 #include "kernel.h"
 #include "gridStruct.h"
 #include "heap.h"
+#include "intersections.h"
 
 #if PRESSURE == 1
 	#define DELTA_Q (float)(0.3*H)
 	#define PRESSURE_K 0.1
 	#define PRESSURE_N 4
-#endif
-
-#if SHARED == 1
-    #define ACC(x,y,z) sharedMemAcc(x,y,z)
-#else
-    #define ACC(x,y,z) naiveAcc(x,y,z)
 #endif
 
 //GLOBALS
@@ -42,6 +37,8 @@ glm::vec3* curl;
 float* lambdas;
 glm::vec3* delta_pos;
 glm::vec3* external_forces;
+
+using namespace glm;
 
 void checkCUDAError(const char *msg, int line = -1)
 {
@@ -78,108 +75,12 @@ glm::vec3 generateRandomNumberFromThread(float time, int index)
     return glm::vec3((float) u01(rng), (float) u01(rng), (float) u01(rng));
 }
 
-//Determine velocity from the distance from the center star. Not super physically accurate because 
-//the mass ratio is too close, but it makes for an interesting looking scene
-__global__
-void generateCircularVelArray(int time, int N, glm::vec3 * arr, glm::vec4 * pos)
-{
-    int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-    if(index < N)
-    {
-        glm::vec3 R = glm::vec3(pos[index].x, pos[index].y, pos[index].z);
-        float r = glm::length(R) + EPSILON;
-        float s = sqrt(G*starMass/r);
-        glm::vec3 D = glm::normalize(glm::cross(R/r,glm::vec3(0,0,1)));
-        arr[index].x = s*D.x;
-        arr[index].y = s*D.y;
-        arr[index].z = s*D.z;
-    }
-}
-
-//Generate randomized starting velocities in the XY plane
-__global__
-void generateRandomVelArray(int time, int N, glm::vec3 * arr, float scale)
-{
-    int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-    if(index < N)
-    {
-        glm::vec3 rand = scale*(generateRandomNumberFromThread(time, index) - 0.5f);
-        arr[index].x = rand.x;
-        arr[index].y = rand.y;
-        arr[index].z = 0.0;//rand.z;
-    }
-}
-
-//TODO: Determine force between two bodies
-__device__
-glm::vec3 calculateAcceleration(glm::vec4 us, glm::vec4 them)
-{
-    //    G*m_us*m_them
-    //F = -------------
-    //         r^2
-    //
-    //    G*m_us*m_them   G*m_them
-    //a = ------------- = --------
-    //      m_us*r^2        r^2
-    
-    return glm::vec3(0.0f);
-}
-
-//TODO: Core force calc kernel global memory
-__device__ 
-glm::vec3 naiveAcc(int N, glm::vec4 my_pos, glm::vec4 * their_pos)
-{
-    glm::vec3 acc = calculateAcceleration(my_pos, glm::vec4(0,0,0,starMass));
-    return acc;
-}
-
-
-//TODO: Core force calc kernel shared memory
-__device__ 
-glm::vec3 sharedMemAcc(int N, glm::vec4 my_pos, glm::vec4 * their_pos)
-{
-    glm::vec3 acc = calculateAcceleration(my_pos, glm::vec4(0,0,0,starMass));
-    return acc;
-}
-
-//Simple Euler integration scheme
-__global__
-void updateF(int N, float dt, glm::vec4 * pos, glm::vec3 * vel, glm::vec3 * acc)
-{
-    int index = threadIdx.x + (blockIdx.x * blockDim.x);
-    glm::vec4 my_pos;
-    glm::vec3 accel;
-
-    if(index < N) my_pos = pos[index];
-
-    accel = ACC(N, my_pos, pos);
-
-    if(index < N) acc[index] = accel;
-}
-
-__global__
-void updateS(int N, float dt, glm::vec4 * pos, glm::vec3 * vel, glm::vec3 * acc)
-{
-    int index = threadIdx.x + (blockIdx.x * blockDim.x);
-    if( index < N )
-    {
-        vel[index]   += acc[index]   * dt;
-        pos[index].x += vel[index].x * dt;
-        pos[index].y += vel[index].y * dt;
-        pos[index].z += vel[index].z * dt;
-    }
-}
-
 //Update the vertex buffer object
 //(The VBO is where OpenGL looks for the positions for the planets)
 __global__
 void sendToVBO(int N, glm::vec4 * pos, float * vbo, int width, int height, float s_scale)
 {
     int index = threadIdx.x + (blockIdx.x * blockDim.x);
-
-    //float c_scale_w = -2.0f / s_scale;
-    //float c_scale_h = -2.0f / s_scale;
-	//float c_scale_z = 2.0f / s_scale;
 
 	float c_scale_w = 1.0f;
     float c_scale_h = 1.0f;
@@ -194,31 +95,6 @@ void sendToVBO(int N, glm::vec4 * pos, float * vbo, int width, int height, float
     }
 }
 
-//Update the texture pixel buffer object
-//(This texture is where openGL pulls the data for the height map)
-__global__
-void sendToPBO(int N, glm::vec4 * pos, float4 * pbo, int width, int height, float s_scale)
-{
-    int index = threadIdx.x + (blockIdx.x * blockDim.x);
-    int x = index % width;
-    int y = index / width;
-    float w2 = width / 2.0;
-    float h2 = height / 2.0;
-
-    float c_scale_w = width / s_scale;
-    float c_scale_h = height / s_scale;
-
-    glm::vec3 color(0.05, 0.15, 0.3);
-    glm::vec3 acc = ACC(N, glm::vec4((x-w2)/c_scale_w,(y-h2)/c_scale_h,0,1), pos);
-
-    if(x<width && y<height)
-    {
-        float mag = sqrt(sqrt(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z));
-        // Each thread writes one pixel location in the texture (textel)
-        pbo[index].w = (mag < 1.0f) ? mag : 1.0f;
-    }
-}
-
 /*************************************
  * Device Methods for Solver
  *************************************/
@@ -226,14 +102,18 @@ void sendToPBO(int N, glm::vec4 * pos, float4 * pbo, int width, int height, floa
 __device__ float wPoly6Kernel(glm::vec3 p_i, glm::vec3 p_j){
 	float r = glm::length(p_i - p_j);
 	float hr_term = (H * H - r * r);
-	return 315.0f / (64.0 * PI * POW_H_9) * hr_term * hr_term * hr_term;
+	float div = 64.0 * PI * POW_H_9;
+	if(div < EPSILON) return 0;
+	return 315.0f / div * hr_term * hr_term * hr_term;
 }
 
 __device__ glm::vec3 wGradientSpikyKernel(glm::vec3 p_i, glm::vec3 p_j){
 	glm::vec3 r = p_i - p_j;
 	float hr_term = H - glm::length(r);
 	float gradient_magnitude = 45.0f / (PI * POW_H_6) * hr_term * hr_term;
-	return gradient_magnitude * 1.0f / (glm::length(r) + 0.001f) * r;
+	float div = (glm::length(r) + 0.001f);
+	if(div < EPSILON) return vec3(0.0f);
+	return gradient_magnitude * 1.0f / div * r;
 }
 
 __device__ float calculateRo(glm::vec4* particles, glm::vec3 p, int* p_neighbors, int p_num_neighbors, int index){
@@ -247,7 +127,9 @@ __device__ float calculateRo(glm::vec4* particles, glm::vec3 p, int* p_neighbors
 }
 
 __device__ glm::vec3 calculateCiGradient(glm::vec3 p_i, glm::vec3 p_j){
-	return -1.0f / float(REST_DENSITY) * wGradientSpikyKernel(p_i, p_j);
+	glm::vec3 Ci = -1.0f / float(REST_DENSITY) * wGradientSpikyKernel(p_i, p_j);
+	if(glm::length(Ci) < EPSILON) return glm::vec3(0.0f);
+	return Ci;
 }
 
 __device__ glm::vec3 calculateCiGradientAti(glm::vec4* particles, glm::vec3 p_i, int* neighbors, int p_num_neighbors, int index){
@@ -255,7 +137,9 @@ __device__ glm::vec3 calculateCiGradientAti(glm::vec4* particles, glm::vec3 p_i,
 	for(int i = 0; i < p_num_neighbors; i++){
 		accum += wGradientSpikyKernel(p_i, glm::vec3(particles[neighbors[i + index * MAX_NEIGHBORS]]));
 	}
-	return 1.0f / float(REST_DENSITY) * accum;
+	glm::vec3 Ci = 1.0f / float(REST_DENSITY) * accum;
+	if(glm::length(Ci) < EPSILON) return glm::vec3(0.0f);
+	return Ci;
 }
 
 /*************************************
@@ -413,7 +297,9 @@ __global__ void calculateLambda(glm::vec4* particles, int* neighbors, int* num_n
 		C_i_gradient = glm::length(calculateCiGradientAti(particles, p, neighbors, k, index));
 		sum_gradients += (C_i_gradient * C_i_gradient);
 
-		lambdas[index] = -1.0f * (C_i / (sum_gradients + RELAXATION)); 
+		float sumCi = sum_gradients + RELAXATION;
+		if(sumCi < EPSILON) lambdas[index] = -0.0f;
+		else lambdas[index] = -1.0f * (C_i / sumCi); 
 	}
 }
 
@@ -434,12 +320,16 @@ __global__ void calculateDeltaPi(glm::vec4* particles, int* neighbors, int* num_
 		for(int i = 0; i < k; i++){
 			p_j_idx = neighbors[i + index * MAX_NEIGHBORS];
 #if PRESSURE == 1
-			k_term = wPoly6Kernel(p, glm::vec3(particles[p_j_idx])) / wPoly6Kernel(p, d_q);
+			float poly6pd_q = wPoly6Kernel(p, d_q);
+			if(poly6pd_q < EPSILON) k_term = 0.0f;
+			else k_term = wPoly6Kernel(p, glm::vec3(particles[p_j_idx])) / poly6pd_q;
 			s_corr = -1.0f * PRESSURE_K * pow(k_term, PRESSURE_N);
 #endif
 			delta += (l + lambdas[p_j_idx] + s_corr) * wGradientSpikyKernel(p, glm::vec3(particles[p_j_idx]));
 		}
-		delta_pos[index] = 1.0f / REST_DENSITY * delta;
+		float inv_p0 = 1.0f / REST_DENSITY;
+		if(inv_p0 < EPSILON) delta_pos[index] = glm::vec3(0.0f);
+		else delta_pos[index] = 1.0f / REST_DENSITY * delta;
 	}
 }
 
@@ -493,13 +383,13 @@ __global__
 void initializeParticles(int N, glm::vec4* particles, glm::vec3* velocities, glm::vec3* external_forces)
 {
     int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-	float gravity = -5.0f;
+	float gravity = -9.8f;
     if(index < N)
     {
-		glm::vec3 rand = 15.0f*(generateRandomNumberFromThread(1.0f, index)-0.5f);
+		glm::vec3 rand = 10.0f * (generateRandomNumberFromThread(1.0f, index)-0.5f);
 		particles[index].x = rand.x;
 		particles[index].y = rand.y;
-		particles[index].z = 20.0+rand.z;
+		particles[index].z = 20.0 + rand.z;
 		particles[index].w = 1.0f;
 
 		velocities[index] = glm::vec3(0.0f);
@@ -643,7 +533,7 @@ void initCuda(int N)
     cudaThreadSynchronize();
 }
 
-void cudaNBodyUpdateWrapper(float dt, staticGeom* geoms, int numGeoms)
+void cudaPBFUpdateWrapper(float dt, staticGeom* geoms, int numGeoms)
 {
     dim3 fullBlocksPerGrid((int)ceil(float(numParticles)/float(blockSize)));
     applyExternalForces<<<fullBlocksPerGrid, blockSize>>>(numParticles, dt, pred_particles, particles, velocities, external_forces);
@@ -678,13 +568,6 @@ void cudaUpdateVBO(float * vbodptr, int width, int height)
 {
     dim3 fullBlocksPerGrid((int)ceil(float(numParticles)/float(blockSize)));
     sendToVBO<<<fullBlocksPerGrid, blockSize>>>(numParticles, particles, vbodptr, width, height, scene_scale);
-    cudaThreadSynchronize();
-}
-
-void cudaUpdatePBO(float4 * pbodptr, int width, int height)
-{
-    dim3 fullBlocksPerGrid((int)ceil(float(width*height)/float(blockSize)));
-    sendToPBO<<<fullBlocksPerGrid, blockSize, blockSize*sizeof(glm::vec4)>>>(numParticles, particles, pbodptr, width, height, scene_scale);
     cudaThreadSynchronize();
 }
 
