@@ -15,5 +15,5 @@
 # Visual Studio projects
 *.vcxproj
 *.vcxproj.user
-*.vcxproj.user.filter
+*.vcxproj.user.filters
 *.sln
