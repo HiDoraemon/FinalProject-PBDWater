@@ -74,14 +74,14 @@ float zFar = 10000000.0f;
 
 glm::mat4 projection;
 glm::mat4 view;
-glm::vec3 cameraPosition(60.75,0,30.35);
+glm::vec3 cameraPosition(-40.75,0,25.35);
 glm::vec3 center(0,0,0);
 
 //-------------------------------
 //----------CUDA STUFF-----------
 //-------------------------------
 
-int width=1000; int height=1000;
+int width=1280; int height=720;
 
 //-------------------------------
 //-------------MAIN--------------

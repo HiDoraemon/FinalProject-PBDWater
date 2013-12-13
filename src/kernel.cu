@@ -34,6 +34,8 @@ int* num_neighbors;
 int* grid_idx;
 int* grid;
 
+bool hitonce = false;
+
 float wallMove = 0.0f;
 
 
@@ -406,10 +408,10 @@ void initializeParticles(int N, particle* particles)
     if(index < N)
     {
 		particle p = particles[index];
-		glm::vec3 rand = 20.0f * (generateRandomNumberFromThread(1.0f, index)-0.5f);
-		p.position.x = rand.x;
-		p.position.y = rand.y;
-		p.position.z = 20.0 + rand.z;
+		glm::vec3 rand = (generateRandomNumberFromThread(1.0f, index)-0.5f);
+		p.position.x = 9*rand.x;
+		p.position.y = 20*rand.y;
+		p.position.z = 5.0 + 5.0*rand.z;
 		p.position.w = 1.0f;
 
 		p.velocity = glm::vec3(0.0f);
@@ -599,17 +601,19 @@ void cudaPBFUpdateWrapper(float dt)
 		calculateDeltaPi<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, numParticles);
 		//PEFORM COLLISION DETECTION AND RESPONSE
 		boxCollisionResponse<<<fullBlocksPerGrid, blockSize>>>(numParticles, particles, wallMove);
-		geomCollisionResponse<<<fullBlocksPerGrid, blockSize>>>(numParticles, particles, cudageoms, numGeoms);
+		//geomCollisionResponse<<<fullBlocksPerGrid, blockSize>>>(numParticles, particles, cudageoms, numGeoms);
 		updatePredictedPosition<<<fullBlocksPerGrid, blockSize>>>(numParticles, particles);
 	}
-
-	wallMove += 0.1;
-	if (wallMove > BOX_Y)
+	if (!hitonce)
+		wallMove += 0.1;
+	if (wallMove > BOX_Y){
 		wallMove = 0;
+		hitonce = true;
+	}
 
 	updateVelocity<<<fullBlocksPerGrid, blockSize>>>(numParticles, particles, dt);
-	calculateCurl<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, numParticles);
-	applyVorticity<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, numParticles);
+	//calculateCurl<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, numParticles);
+	//applyVorticity<<<fullBlocksPerGrid, blockSize>>>(particles, neighbors, num_neighbors, numParticles);
 	updatePosition<<<fullBlocksPerGrid, blockSize>>>(numParticles, particles);
     checkCUDAErrorWithLine("updatePosition failed!");
     cudaThreadSynchronize();

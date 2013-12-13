@@ -19,8 +19,8 @@
 #define PRESSURE 1
 #define HEAP 0
 
-#define BOX_X 15
-#define BOX_Y 15
+#define BOX_X 10
+#define BOX_Y 20
 #define BOX_Z 40
 
 #define SOLVER_ITERATIONS 3
