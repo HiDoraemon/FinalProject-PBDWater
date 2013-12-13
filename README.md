@@ -16,9 +16,6 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 -----
 
 ###Proposed Features:
-*   Particle-based position based dynamics fluid simulator that runs on the GPU
-*   Viscosity term
-*   GPU Hash Grid for optimization of finding particle neighbors
 *   Meshless rendering (bilateral Gaussian or curvature flow)
 *   Caustics rendering for water?
 
@@ -26,6 +23,8 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 *   Uses the density constraint to enforce incompressibility
 *   Artificial pressure term to simulate surface tension
 *   Vorticity confinement to replace energy
+*   Particle-based position based dynamics fluid simulator that runs on the GPU
+*   GPU Hash Grid for optimization of finding particle neighbors
 
 -------
 
@@ -34,12 +33,12 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
  + ~~Setting up framework for constraint and particle system~~
  + ~~Set up visualization for particles~~
 * Mon, 12/9 (Last day of class)
- + begin writing paper
- + Simulator with position based dynamics finished
- + GPU hash grid
+ + ~~begin writing paper
+ + ~~Simulator with position based dynamics finished
+ + ~~GPU hash grid
 * Due date (Final)
  + Meshless rendering finished 
- + Paper finished
+ + ~~Paper finished
 
 ------
 
@@ -53,6 +52,16 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 
 ------
 
+###Final Results
+
+[Slides](https://github.com/harmoli/FinalProject-PBDWater/blob/master/CIS565-Final.pdf)
+
+[Video](https://vimeo.com/)
+
+[Final Paper](https://github.com/harmoli/FinalProject-PBDWater/blob/master/final_paper.pdf)
+
+------
+
 ###Acknowledgments:
 
 Many thanks to Mohammed Sakr(3dsakr@gmail.com), who has reached out with bug fixes and suggestions.
@@ -62,10 +71,10 @@ Many thanks to Mohammed Sakr(3dsakr@gmail.com), who has reached out with bug fix
 ###References:
 ####Fluid Simulation
 * [Position Based Fluids](http://mmacklin.com/pbf_sig_preprint.pdf) : M. Muller, M. Macklin 
-* [Position Based Fluids : SIGGRAPH proceeding slides] (http://mmacklin.com/pbf_slides.pdf)
+* [Position Based Fluids : SIGGRAPH proceeding slides](http://mmacklin.com/pbf_slides.pdf)
 
 ####Rendering
-* [Screen Space Fluid Rendering with Curvature Flow] (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.157.909&rep=rep1&type=pdf) : W. van der Laan, S. Green, M. Sainz 
+* [Screen Space Fluid Rendering with Curvature Flow](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.157.909&rep=rep1&type=pdf) : W. van der Laan, S. Green, M. Sainz 
 * [Reconstructing Surfaces of Particle-Based Fluids using Anisiotropic Kernels] (http://www.cc.gatech.edu/~turk/my_papers/sph_surfaces.pdf) : Yu, Turk
 
 
