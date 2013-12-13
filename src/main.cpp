@@ -6,7 +6,7 @@
 
 using namespace glm;
 
-#define N_FOR_VIS 20000
+#define N_FOR_VIS 10000
 #define DT 0.1
 #define VISUALIZE 1
 //-------------------------------
@@ -85,7 +85,7 @@ void initGeometry(){
 	staticGeom geom;
 	geom.type = SPHERE;
 	geom.rotation = vec3(0,0,0);
-	geom.translation = vec3(0,0,10);
+	geom.translation = vec3(0,0,0);
 	geom.scale = vec3(6,6,6);
 	mat4 transform = utilityCore::buildTransformationMatrix(geom.translation, geom.rotation, geom.scale);
 	geom.transform = utilityCore::glmMat4ToCudaMat4(transform);
@@ -214,7 +214,7 @@ void display()
     glDisableVertexAttribArray(texcoordsLocation);*/
 
 	//sphere
-	glUseProgram(program[2]);
+	/*glUseProgram(program[2]);
 
     glEnableVertexAttribArray(positionLocation);
     glEnableVertexAttribArray(texcoordsLocation);
@@ -231,7 +231,7 @@ void display()
 	glDrawElements(GL_TRIANGLES, (num_circles-2)*num_circles*6+6*num_circles,  GL_UNSIGNED_INT, 0);
 
     glDisableVertexAttribArray(positionLocation);
-    glDisableVertexAttribArray(texcoordsLocation);
+    glDisableVertexAttribArray(texcoordsLocation);*/
 
 #endif
     glutPostRedisplay();
@@ -445,7 +445,7 @@ void initVAO(void)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 	//drawMesh();
-	drawSphere();
+	//drawSphere();
 
     delete[] vertices;
     delete[] texcoords;
