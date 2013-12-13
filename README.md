@@ -33,12 +33,12 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
  + ~~Setting up framework for constraint and particle system~~
  + ~~Set up visualization for particles~~
 * Mon, 12/9 (Last day of class)
- + ~~begin writing paper
- + ~~Simulator with position based dynamics finished
- + ~~GPU hash grid
-* Due date (Final)
+ + ~~begin writing paper~~
+ + ~~Simulator with position based dynamics finished~~
+ + ~~GPU hash grid~~
+* Due date ([Final](#final-results))
  + Meshless rendering finished 
- + ~~Paper finished
+ + ~~Paper finished~~
 
 ------
 
@@ -56,7 +56,7 @@ will be largely based on Muller and Macklin’s paper “Position Based Fluids�
 
 [Slides](https://github.com/harmoli/FinalProject-PBDWater/blob/master/CIS565-Final.pdf)
 
-[Video](https://vimeo.com/)
+[Video](http://vimeo.com/81790228)
 
 [Final Paper](https://github.com/harmoli/FinalProject-PBDWater/blob/master/final_paper.pdf)
 
