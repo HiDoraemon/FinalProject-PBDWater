@@ -39,7 +39,7 @@ GLuint positionLocation = 0;
 unsigned int colorLocation;
 unsigned int normalLocation;
 GLuint texcoordsLocation = 1;
-const char *attributeLocations[] = { "Position", "Texcoords" };
+const char *attributeLocations[] = { "Normal", "Color", "Position", "Texcoords" };
 GLuint pbo = (GLuint)NULL;
 GLuint planeVBO = (GLuint)NULL;
 GLuint planeTBO = (GLuint)NULL;
@@ -56,6 +56,12 @@ GLuint sphereVBO = (GLuint)NULL;
 GLuint sphereTBO = (GLuint)NULL;
 GLuint sphereIBO = (GLuint)NULL;
 
+GLuint depthTexture = 0;
+GLuint normalTexture = 0;
+GLuint positionTexture = 0;
+GLuint colorTexture = 0;
+GLuint FBO[1] = {0};	
+
 const unsigned int HEIGHT_FIELD = 0;
 const unsigned int PASS_THROUGH = 1;
 
@@ -69,6 +75,8 @@ float zFar = 10000000.0f;
 glm::mat4 projection;
 glm::mat4 view;
 glm::vec3 cameraPosition(60.75,0,30.35);
+glm::vec3 center(0,0,0);
+
 //-------------------------------
 //----------CUDA STUFF-----------
 //-------------------------------
@@ -102,8 +110,8 @@ void initCuda();
 void initTextures();
 void initVAO();
 void initShaders(GLuint * program);
-void drawMesh();
-void drawSphere();
+void initFBO(int w, int h);
+void bindFBO(int n);
 
 //-------------------------------
 //---------- GEOM STUFF ---------
@@ -113,6 +121,8 @@ obj* mesh;
 vector<staticGeom> geoms;
 
 void initGeometry();
+void drawMesh();
+void drawSphere();
 
 //-------------------------------
 //---------CLEANUP STUFF---------
@@ -122,5 +132,19 @@ void cleanupCuda();
 void deletePBO(GLuint* pbo);
 void deleteTexture(GLuint* tex);
 void shut_down(int return_code);
+
+//camera stuff
+float theta = 0; //r and l
+float phi = 30; //up and down
+float r = glm::length(cameraPosition-center);
+float oldx;
+float oldy;
+
+bool Lpressed = false;
+bool Rpressed = false;
+
+void mouse(int button, int state, int x, int y);
+void drag(int x, int y);
+void update(int x, int y);
 
 #endif

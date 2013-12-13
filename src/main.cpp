@@ -6,8 +6,8 @@
 
 using namespace glm;
 
-#define N_FOR_VIS 5000
-#define DT 0.05
+#define N_FOR_VIS 20000
+#define DT 0.1
 #define VISUALIZE 1
 //-------------------------------
 //-------------MAIN--------------
@@ -19,25 +19,25 @@ int main(int argc, char** argv)
 	initGeometry();
 
 	//load mesh
-	bool loadedScene = false;
-	for(int i=1; i<argc; i++){
-		string header; string data;
-		istringstream liness(argv[i]);
-		getline(liness, header, '='); getline(liness, data, '=');
-		if(strcmp(header.c_str(), "mesh")==0){
-		  //renderScene = new scene(data);
-		  mesh = new obj();
-		  objLoader* loader = new objLoader(data, mesh);
-		  mesh->buildVBOs();
-		  delete loader;
-		  loadedScene = true;
-		}
-	}
+	//bool loadedScene = false;
+	//for(int i=1; i<argc; i++){
+	//	string header; string data;
+	//	istringstream liness(argv[i]);
+	//	getline(liness, header, '='); getline(liness, data, '=');
+	//	if(strcmp(header.c_str(), "mesh")==0){
+	//	  //renderScene = new scene(data);
+	//	  mesh = new obj();
+	//	  objLoader* loader = new objLoader(data, mesh);
+	//	  mesh->buildVBOs();
+	//	  delete loader;
+	//	  loadedScene = true;
+	//	}
+	//}
 
-	  if(!loadedScene){
-		cout << "Usage: mesh=[obj file]" << endl;
-		return 0;
-	  }
+	 // if(!loadedScene){
+		//cout << "Usage: mesh=[obj file]" << endl;
+		//return 0;
+	 // }
 
     // Launch CUDA/GL
 
@@ -47,19 +47,23 @@ int main(int argc, char** argv)
     initPBO(&pbo);
     cudaGLRegisterBufferObject( planetVBO );
     
+		//pack geoms
+	staticGeom* gs = new staticGeom[geoms.size()];
+	for (int i = 0; i < geoms.size(); i++){
+		//geoms[i].translation += glm::vec3(0,0,.1);
+		gs[i] = geoms[i];
+	}
+
+
 #if VISUALIZE == 1
-    initCuda(N_FOR_VIS);
+    initCuda(N_FOR_VIS, gs, geoms.size());
 #else
     initCuda(2*128);
 #endif
 
-    projection = glm::perspective(fovy, float(width)/float(height), zNear, zFar);
-    view = glm::lookAt(cameraPosition-glm::vec3(0,0,10), glm::vec3(0), glm::vec3(0,0,1));
-
-    projection = projection * view;
-
     GLuint passthroughProgram;
     initShaders(program);
+	initFBO(width, height);
 
     glUseProgram(program[HEIGHT_FIELD]);
     glActiveTexture(GL_TEXTURE0);
@@ -69,6 +73,8 @@ int main(int argc, char** argv)
 
     glutDisplayFunc(display);
     glutKeyboardFunc(keyboard);
+	glutMouseFunc(mouse);
+    glutMotionFunc(update);
 
     glutMainLoop();
 
@@ -79,8 +85,8 @@ void initGeometry(){
 	staticGeom geom;
 	geom.type = SPHERE;
 	geom.rotation = vec3(0,0,0);
-	geom.translation = vec3(0,0,-4);
-	geom.scale = vec3(10,10,10);
+	geom.translation = vec3(0,0,10);
+	geom.scale = vec3(6,6,6);
 	mat4 transform = utilityCore::buildTransformationMatrix(geom.translation, geom.rotation, geom.scale);
 	geom.transform = utilityCore::glmMat4ToCudaMat4(transform);
 	geom.inverseTransform = utilityCore::glmMat4ToCudaMat4(glm::inverse(transform));
@@ -111,16 +117,11 @@ void runCuda()
     cudaGLMapBufferObject((void**)&dptr, pbo);
     cudaGLMapBufferObject((void**)&dptrvert, planetVBO);
 
-	//pack geoms
-	staticGeom* gs = new staticGeom[geoms.size()];
-	for (int i = 0; i < geoms.size(); i++){
-		gs[i] = geoms[i];
-	}
+	//std::getchar();
 
     // execute the kernel
-    cudaNBodyUpdateWrapper(DT, gs, geoms.size());
+    cudaPBFUpdateWrapper(DT);
 #if VISUALIZE == 1
-    cudaUpdatePBO(dptr, field_width, field_height);
     cudaUpdateVBO(dptrvert, field_width, field_height);
 #endif
     // unmap buffer object
@@ -248,6 +249,67 @@ void keyboard(unsigned char key, int x, int y)
             break;
     }
 }
+
+void mouse(int button, int state, int x, int y){
+	  switch(button){
+		  case GLUT_LEFT_BUTTON:		//rotate
+			  if(state == GLUT_DOWN){
+				  Lpressed = true;
+				  oldx = x;
+				  oldy = y;
+			  }else if (state == GLUT_UP){
+				  Lpressed = false;
+			  }
+			  break;
+		  case GLUT_RIGHT_BUTTON:		//zoom
+			  if(state == GLUT_DOWN){
+				  Rpressed = true;
+				  oldx = x;
+			  }else if (state == GLUT_UP){
+				  Rpressed = false;
+			  }
+			  break;
+	  }
+  }
+
+  void update(int x, int y){
+	  if (Lpressed){		//rotate
+			float difx = x-oldx;
+			float dify = y-oldy;
+			phi += dify*.5f;
+			theta -= difx*.5f;
+
+			if (phi < -90){
+				phi = -89.999;
+			}else if (phi > 90){
+				phi = 89.999;
+			}
+
+			float radPhi = 3.14159265359/180*phi;
+			float radTheta = 3.14159265359/180*theta;
+
+			float eyex = r*cos(radTheta)*cos(radPhi);
+			float eyey = r*sin(radTheta)*cos(radPhi);
+			float eyez = r*sin(radPhi);
+			cameraPosition = glm::vec3(eyex,eyey,eyez);
+			oldx = x;
+			oldy = y;
+	  }else if (Rpressed){	//zoom
+			float difx = x-oldx;
+			r -= 0.1*difx;
+
+			float radPhi = 3.14159265359/180*phi;
+			float radTheta = 3.14159265359/180*theta;
+
+			float eyex = r*cos(radTheta)*cos(radPhi);
+			float eyey = r*sin(radTheta)*cos(radPhi);
+			float eyez = r*sin(radPhi);
+			cameraPosition = glm::vec3(eyex,eyey,eyez);
+			oldx = x;
+			oldy = y;
+	  }
+	  initShaders(program);
+  }
 
 
 //-------------------------------
@@ -394,6 +456,11 @@ void initVAO(void)
 
 void initShaders(GLuint * program)
 {
+	projection = glm::perspective(fovy, float(width)/float(height), zNear, zFar);
+    view = glm::lookAt(cameraPosition-center, glm::vec3(0), glm::vec3(0,0,1));
+
+    projection = projection * view;
+
     GLint location;
     program[0] = glslUtility::createProgram("shaders/heightVS.glsl", "shaders/heightFS.glsl", attributeLocations, 2);
     glUseProgram(program[0]);
@@ -440,6 +507,130 @@ void initShaders(GLuint * program)
     {
         glUniform1i(location, 0);
     }
+}
+
+void checkFramebufferStatus(GLenum framebufferStatus) {
+    switch (framebufferStatus) {
+        case GL_FRAMEBUFFER_COMPLETE_EXT: break;
+        case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT:
+                                          printf("Attachment Point Unconnected\n");
+                                          break;
+        case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT:
+                                          printf("Missing Attachment\n");
+                                          break;
+        case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT:
+                                          printf("Dimensions do not match\n");
+                                          break;
+        case GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT:
+                                          printf("Formats\n");
+                                          break;
+        case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER_EXT:
+                                          printf("Draw Buffer\n");
+                                          break;
+        case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER_EXT:
+                                          printf("Read Buffer\n");
+                                          break;
+        case GL_FRAMEBUFFER_UNSUPPORTED_EXT:
+                                          printf("Unsupported Framebuffer Configuration\n");
+                                          break;
+        default:
+                                          printf("Unkown Framebuffer Object Failure\n");
+                                          break;
+    }
+}
+
+void initFBO(int w, int h) {
+    GLenum FBOstatus;
+
+    glActiveTexture(GL_TEXTURE9);
+
+    glGenTextures(1, &depthTexture);
+    glGenTextures(1, &normalTexture);
+    glGenTextures(1, &positionTexture);
+    glGenTextures(1, &colorTexture);
+
+    //Set up depth FBO
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_INTENSITY);
+
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+
+    //Set up normal FBO
+    glBindTexture(GL_TEXTURE_2D, normalTexture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB32F , w, h, 0, GL_RGBA, GL_FLOAT,0);
+
+    //Set up position FBO
+    glBindTexture(GL_TEXTURE_2D, positionTexture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB32F , w, h, 0, GL_RGBA, GL_FLOAT,0);
+
+    //Set up color FBO
+    glBindTexture(GL_TEXTURE_2D, colorTexture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB32F , w, h, 0, GL_RGBA, GL_FLOAT,0);
+
+    // creatwwe a framebuffer object
+    glGenFramebuffers(1, &FBO[0]);
+    glBindFramebuffer(GL_FRAMEBUFFER, FBO[0]);
+
+    // Instruct openGL that we won't bind a color texture with the currently bound FBO
+    glReadBuffer(GL_NONE);
+    GLint normal_loc = glGetFragDataLocation(program[1],"out_Normal");
+    GLint position_loc = glGetFragDataLocation(program[1],"out_Position");
+    GLint color_loc = glGetFragDataLocation(program[1],"out_Color");
+    GLenum draws [3];
+    draws[normal_loc] = GL_COLOR_ATTACHMENT0;
+    draws[position_loc] = GL_COLOR_ATTACHMENT1;
+    draws[color_loc] = GL_COLOR_ATTACHMENT2;
+    glDrawBuffers(3, draws);
+
+    // attach the texture to FBO depth attachment point
+    int test = GL_COLOR_ATTACHMENT0;
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthTexture, 0);
+    glBindTexture(GL_TEXTURE_2D, normalTexture);    
+    glFramebufferTexture(GL_FRAMEBUFFER, draws[normal_loc], normalTexture, 0);
+    glBindTexture(GL_TEXTURE_2D, positionTexture);    
+    glFramebufferTexture(GL_FRAMEBUFFER, draws[position_loc], positionTexture, 0);
+    glBindTexture(GL_TEXTURE_2D, colorTexture);    
+    glFramebufferTexture(GL_FRAMEBUFFER, draws[color_loc], colorTexture, 0);
+
+    // check FBO status
+    FBOstatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if(FBOstatus != GL_FRAMEBUFFER_COMPLETE) {
+        printf("GL_FRAMEBUFFER_COMPLETE failed, CANNOT use FBO[0]\n");
+        checkFramebufferStatus(FBOstatus);
+    }
+
+    // switch back to window-system-provided framebuffer
+    glClear(GL_DEPTH_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 //-------------------------------
